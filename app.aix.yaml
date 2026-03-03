@@ -1,8 +1,9 @@
 runtime: python314
 service: c4
-entrypoint: gunicorn -b :$PORT run:app
+entrypoint: gunicorn --worker-tmp-dir /tmp -b :$PORT run:app
 
 env_variables:
+  APP_BASE_PATH: /c4
   C4_DATABASE_URL: ""
   C4_DATABASE_URL_SECRET: ""
   C4_DB_PATH: /tmp/c4.db
