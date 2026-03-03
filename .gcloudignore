@@ -1,0 +1,14 @@
+.gcloudignore
+.git
+
+# Never ship local runtime/dev artifacts.
+venv/
+.venv/
+.pytest_cache/
+__pycache__/
+tests/
+docs/
+data/
+*.db
+*.sqlite*
+*.ipynb

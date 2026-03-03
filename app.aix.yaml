@@ -1,0 +1,22 @@
+runtime: python314
+service: c4
+entrypoint: gunicorn -b :$PORT run:app
+
+env_variables:
+  C4_DATABASE_URL: ""
+  C4_DATABASE_URL_SECRET: ""
+  C4_DB_PATH: /tmp/c4.db
+  C4_EVENTS_DIR: gs://aix-labs-data/c4/events
+  C4_MODELS_DIR: gs://aix-labs-data/c4/models
+  C4_EXPORTS_DIR: gs://aix-labs-data/c4/exports
+  C4_TRAINING_EXECUTION_MODE: task_queue
+  C4_TASKS_PROJECT_ID: aix-labs
+  C4_TASKS_LOCATION: us-west1
+  C4_TASKS_QUEUE: c4-training
+  C4_TRAINING_WORKER_URL: https://c4-dot-aix-labs.uw.r.appspot.com
+  C4_TRAINING_WORKER_TOKEN: ""
+  C4_TRAINING_WORKER_TOKEN_SECRET: projects/aix-labs/secrets/c4-worker-token/versions/latest
+  C4_INTERNAL_WORKER_TOKEN: ""
+  C4_INTERNAL_WORKER_TOKEN_SECRET: projects/aix-labs/secrets/c4-worker-token/versions/latest
+
+service_account: aix-admin@aix-labs.iam.gserviceaccount.com
