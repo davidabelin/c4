@@ -5,7 +5,7 @@ entrypoint: gunicorn --worker-tmp-dir /tmp -b :$PORT run:app
 env_variables:
   APP_BASE_PATH: /c4
   C4_DATABASE_URL: ""
-  C4_DATABASE_URL_SECRET: ""
+  C4_DATABASE_URL_SECRET: projects/aix-labs/secrets/c4-database-url/versions/latest
   C4_DB_PATH: /tmp/c4.db
   C4_EVENTS_DIR: gs://aix-labs-data/c4/events
   C4_MODELS_DIR: gs://aix-labs-data/c4/models
