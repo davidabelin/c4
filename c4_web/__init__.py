@@ -68,6 +68,7 @@ def create_app(config: dict | None = None) -> Flask:
         TRAINING_WORKER_SERVICE_ACCOUNT=os.getenv("C4_TRAINING_WORKER_SERVICE_ACCOUNT", ""),
         INTERNAL_WORKER_TOKEN=os.getenv("C4_INTERNAL_WORKER_TOKEN", ""),
         INTERNAL_WORKER_TOKEN_SECRET=os.getenv("C4_INTERNAL_WORKER_TOKEN_SECRET", ""),
+        AIX_HUB_URL=os.getenv("AIX_HUB_URL", "/"),
     )
     if config:
         app.config.update(config)
@@ -112,5 +113,11 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(game_bp)
     app.register_blueprint(training_bp)
     app.register_blueprint(rl_bp)
+
+    @app.context_processor
+    def inject_template_globals() -> dict:
+        return {
+            "aix_hub_url": str(app.config.get("AIX_HUB_URL", "/")).strip() or "/",
+        }
 
     return app

@@ -1,9 +1,14 @@
 {% extends "base.html" %}
-{% block title %}c4 Agent Lab | Training{% endblock %}
+{% block title %}Connect4 Agent Lab | Training{% endblock %}
 {% block content %}
-<section>
-  <h1>Training (API-first Placeholder)</h1>
-  <p>Use <code>/api/v1/training/*</code> and <code>/api/v1/models</code>.</p>
+<section class="stack">
+  <div class="panel">
+    <h1>Supervised Training</h1>
+    <p>Training scaffolding is active through <code>/api/v1/training/*</code> and <code>/api/v1/models</code>.</p>
+    <p class="status">
+      Next phase: add the same web controls and model activation workflow used in RPS.
+    </p>
+  </div>
 </section>
 <script src="{{ url_for('static', filename='js/train.js') }}"></script>
 {% endblock %}

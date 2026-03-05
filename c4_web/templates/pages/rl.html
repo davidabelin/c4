@@ -1,9 +1,14 @@
 {% extends "base.html" %}
-{% block title %}c4 Agent Lab | RL{% endblock %}
+{% block title %}Connect4 Agent Lab | RL{% endblock %}
 {% block content %}
-<section>
-  <h1>RL (API-first Placeholder)</h1>
-  <p>Use <code>/api/v1/rl/*</code> for RL training job lifecycle.</p>
+<section class="stack">
+  <div class="panel">
+    <h1>Reinforcement Learning</h1>
+    <p>RL job lifecycle endpoints are active at <code>/api/v1/rl/*</code>.</p>
+    <p class="status">
+      Next phase: add job form/status panels mirroring the RPS RL page with Connect4-specific options.
+    </p>
+  </div>
 </section>
 <script src="{{ url_for('static', filename='js/rl.js') }}"></script>
 {% endblock %}

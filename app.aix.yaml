@@ -2,8 +2,12 @@ runtime: python314
 service: c4
 entrypoint: gunicorn --worker-tmp-dir /tmp -b :$PORT run:app
 
+beta_settings:
+  cloud_sql_instances: aix-labs:us-west1:aix-sql
+
 env_variables:
   APP_BASE_PATH: /c4
+  AIX_HUB_URL: https://aix-labs.uw.r.appspot.com/
   C4_DATABASE_URL: ""
   C4_DATABASE_URL_SECRET: projects/aix-labs/secrets/c4-database-url/versions/latest
   C4_DB_PATH: /tmp/c4.db

@@ -1,8 +1,30 @@
 {% extends "base.html" %}
-{% block title %}c4 Agent Lab | Home{% endblock %}
+{% block title %}Connect4 Agent Lab | Home{% endblock %}
 {% block content %}
-<section>
-  <h1>Connect4 Agent Lab</h1>
-  <p>Backend migration is active. Gameplay UI iteration is intentionally deferred.</p>
+<section class="hero">
+  <p class="eyebrow">Flask + Agent Lab + Training Pipelines</p>
+  <h1>Build, benchmark, and deploy Connect4 AI agents.</h1>
+  <p class="lede">
+    This lab follows the same AIX structure as RPS while using Connect4-specific
+    gameplay/training/RL APIs.
+  </p>
+</section>
+
+<section class="grid">
+  <article class="card">
+    <h2>Play Scaffold</h2>
+    <p>API-backed shell for game creation and move execution.</p>
+    <a class="btn btn-primary" href="{{ url_for('main.play_page') }}">Open Play</a>
+  </article>
+  <article class="card">
+    <h2>Training Scaffold</h2>
+    <p>Model jobs and registry hooks are available under the training API.</p>
+    <a class="btn btn-secondary" href="{{ url_for('main.training_page') }}">Open Training</a>
+  </article>
+  <article class="card">
+    <h2>RL Scaffold</h2>
+    <p>RL job lifecycle endpoints are active for iterative policy experiments.</p>
+    <a class="btn btn-secondary" href="{{ url_for('main.rl_page') }}">Open RL</a>
+  </article>
 </section>
 {% endblock %}

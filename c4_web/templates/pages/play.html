@@ -1,9 +1,17 @@
 {% extends "base.html" %}
-{% block title %}c4 Agent Lab | Play{% endblock %}
+{% block title %}Connect4 Agent Lab | Play{% endblock %}
 {% block content %}
-<section>
-  <h1>Play (API-first Placeholder)</h1>
-  <p>Use API endpoints under <code>/api/v1</code> while gameplay UI is discussed.</p>
+<section class="stack">
+  <div class="panel">
+    <h1>Play</h1>
+    <p>
+      Initial scaffold is API-first. Use <code>/api/v1/agents</code>, <code>/api/v1/games</code>,
+      and <code>/api/v1/games/&lt;id&gt;/move</code> while we iterate on the full board UI.
+    </p>
+    <p class="status">
+      Next phase: interactive board controls, live score display, and move history similar to RPS flow.
+    </p>
+  </div>
 </section>
 <script src="{{ url_for('static', filename='js/play.js') }}"></script>
 {% endblock %}
