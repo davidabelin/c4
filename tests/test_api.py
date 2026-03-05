@@ -65,6 +65,39 @@ def test_create_move_and_reset_flow(client):
     assert reset.get_json()["game"]["rounds_played"] == 0
 
 
+def test_ai_opening_and_undo_flow(client):
+    response = client.post("/api/v1/games", json={"agent": "alpha_beta_v9", "opening_player": "ai"})
+    assert response.status_code == 201
+    payload = response.get_json()
+    game = payload["game"]
+    board = game["board"]
+    assert payload["opening_player"] == "ai"
+    assert sum(1 for value in board if int(value) == 2) == 1
+    assert int(game["rounds_played"]) == 0
+
+    undo = client.post(f"/api/v1/games/{int(game['game_id'])}/undo")
+    assert undo.status_code == 200
+    undo_payload = undo.get_json()
+    assert undo_payload["undo"]["kind"] == "opening_ai_move"
+    assert sum(int(value) for value in undo_payload["game"]["board"]) == 0
+    assert int(undo_payload["game"]["rounds_played"]) == 0
+
+
+def test_undo_after_player_turn(client):
+    game_id = _create_game(client, "alpha_beta_v9")
+    move = client.post(f"/api/v1/games/{game_id}/move", json={"action": 3})
+    assert move.status_code == 200
+    moved_state = move.get_json()["game"]
+    assert int(moved_state["rounds_played"]) == 1
+
+    undo = client.post(f"/api/v1/games/{game_id}/undo")
+    assert undo.status_code == 200
+    payload = undo.get_json()
+    assert payload["undo"]["kind"] == "turn"
+    assert int(payload["game"]["rounds_played"]) == 0
+    assert sum(int(value) for value in payload["game"]["board"]) == 0
+
+
 def test_training_job_lifecycle_and_model_activation(client):
     readiness = None
     for _ in range(8):

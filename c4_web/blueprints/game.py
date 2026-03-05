@@ -9,7 +9,8 @@ from time import perf_counter
 from flask import Blueprint, current_app, jsonify, request
 
 from c4_agents import ModelBackedAgent, build_heuristic_agent, list_agent_specs
-from c4_core.engine import play_human_turn, replay_ai_agent_state
+from c4_core.board import board_to_grid, drop_piece
+from c4_core.engine import play_human_turn, replay_ai_agent_state, select_ai_action
 from c4_core.types import Connect4Config
 from c4_web.runtime import GameRuntimeState
 
@@ -119,14 +120,54 @@ def list_agents():
 def create_game():
     payload = request.get_json(silent=True) or {}
     agent_name = str(payload.get("agent", current_app.config["DEFAULT_AGENT"]))
+    opening_player = str(payload.get("opening_player", "player")).strip().lower()
+    if opening_player not in {"player", "ai", "random"}:
+        return jsonify({"error": "opening_player must be one of: player, ai, random."}), 400
+
     available = {spec.name for spec in list_agent_specs()}
     if agent_name != "active_model" and agent_name not in available:
         return jsonify({"error": f"Unknown agent '{agent_name}'."}), 400
     if agent_name == "active_model" and _repo().get_active_model() is None:
         return jsonify({"error": "No active model is available. Train and activate a model first."}), 400
+    if opening_player == "random":
+        opening_player = "player" if Random().random() < 0.5 else "ai"
+
     game = _repo().create_game(agent_name=agent_name, board=[0] * 42)
     _runtime().forget_game(int(game["id"]))
-    return jsonify({"game": _serialize_game(game)}), 201
+
+    opening_move = None
+    if opening_player == "ai":
+        try:
+            runtime_state = _load_runtime_state(game)
+            board_before = [0] * 42
+            ai_action = select_ai_action(
+                runtime_state.agent,
+                board_before,
+                config=_config(),
+                mark=2,
+                rng=Random(),
+            )
+            next_grid = drop_piece(board_to_grid(board_before, _config()), ai_action, mark=2, config=_config())
+            board_after = next_grid.reshape(-1).astype(int).tolist()
+            stored_move, game = _repo().record_ai_opening_move(
+                game_id=int(game["id"]),
+                session_index=int(game["session_index"]),
+                ai_action=ai_action,
+                board_before=board_before,
+                board_after=board_after,
+            )
+            opening_move = {
+                "id": int(stored_move["id"]),
+                "actor": "ai",
+                "action": int(ai_action),
+                "board_after": board_after,
+            }
+        except Exception as exc:
+            return jsonify({"error": f"Failed to create AI opening move: {exc}"}), 500
+        finally:
+            _runtime().forget_game(int(game["id"]))
+
+    return jsonify({"game": _serialize_game(game), "opening_player": opening_player, "opening_move": opening_move}), 201
 
 
 @game_bp.get("/games/<int:game_id>")
@@ -219,3 +260,20 @@ def reset_game(game_id: int):
         return jsonify({"error": "Game not found."}), 404
     _runtime().forget_game(game_id)
     return jsonify({"game": _serialize_game(updated_game)})
+
+
+@game_bp.post("/games/<int:game_id>/undo")
+def undo_last_turn(game_id: int):
+    game = _repo().get_game(game_id)
+    if game is None:
+        return jsonify({"error": "Game not found."}), 404
+    try:
+        result = _repo().undo_last_turn(game_id=game_id, session_index=int(game["session_index"]))
+    except KeyError:
+        _runtime().forget_game(game_id)
+        return jsonify({"error": "Game session changed. Start a new game and try again."}), 409
+    if result is None:
+        return jsonify({"error": "Nothing to undo."}), 409
+    updated_game, undo_info = result
+    _runtime().forget_game(game_id)
+    return jsonify({"game": _serialize_game(updated_game), "undo": undo_info})

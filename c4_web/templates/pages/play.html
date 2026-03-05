@@ -4,13 +4,71 @@
 <section class="stack">
   <div class="panel">
     <h1>Play</h1>
-    <p>
-      Initial scaffold is API-first. Use <code>/api/v1/agents</code>, <code>/api/v1/games</code>,
-      and <code>/api/v1/games/&lt;id&gt;/move</code> while we iterate on the full board UI.
-    </p>
-    <p class="status">
-      Next phase: interactive board controls, live score display, and move history similar to RPS flow.
-    </p>
+    <p>Classic Connect4 with configurable opening policy, timer, undo mode, and AI difficulty ladder.</p>
+    <div class="controls-grid">
+      <label>
+        Difficulty
+        <select id="difficultySelect">
+          <option value="easy">Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard">Hard</option>
+          <option value="custom">Custom Agent</option>
+        </select>
+      </label>
+      <label id="agentSelectWrap" class="is-hidden">
+        Agent
+        <select id="agentSelect"></select>
+      </label>
+      <label>
+        Opening Player
+        <select id="openingPlayerSelect">
+          <option value="player">Human First</option>
+          <option value="ai">AI First</option>
+          <option value="random">Random</option>
+        </select>
+      </label>
+      <label>
+        Turn Timer (sec)
+        <input id="timerSecondsInput" type="number" min="5" max="300" value="20">
+      </label>
+      <label>
+        Undo Mode
+        <select id="undoModeSelect">
+          <option value="unlimited">Unlimited</option>
+          <option value="single">Single Undo</option>
+          <option value="off">Off</option>
+        </select>
+      </label>
+    </div>
+    <div class="controls-row">
+      <button id="newGameBtn" class="btn btn-primary" type="button">New Game</button>
+      <button id="undoBtn" class="btn btn-secondary" type="button" disabled>Undo</button>
+      <button id="resetBtn" class="btn btn-secondary" type="button" disabled>Reset</button>
+    </div>
+    <p id="gameStatus" class="status">No active game.</p>
+    <p id="turnTimerStatus" class="status">Turn timer: -</p>
+  </div>
+
+  <div class="panel">
+    <h2>Board</h2>
+    <div id="columnButtons" class="board-controls"></div>
+    <div id="boardGrid" class="board-grid" aria-label="Connect4 board"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Score</h2>
+    <div class="score-row">
+      <span>Wins: <strong id="wins">0</strong></span>
+      <span>Losses: <strong id="losses">0</strong></span>
+      <span>Ties: <strong id="ties">0</strong></span>
+      <span>Turns: <strong id="rounds">0</strong></span>
+    </div>
+    <p id="outcomeBanner" class="status">Start a game to begin.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Move Log</h2>
+    <ul id="moveLog" class="log-list"></ul>
   </div>
 </section>
 <script src="{{ url_for('static', filename='js/play.js') }}"></script>

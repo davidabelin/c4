@@ -501,6 +501,203 @@ class C4Repository:
                 )
                 return inserts, (updated or {})
 
+    def record_ai_opening_move(
+        self,
+        *,
+        game_id: int,
+        session_index: int,
+        ai_action: int,
+        board_before: list[int],
+        board_after: list[int],
+    ) -> tuple[dict, dict]:
+        """Persist one AI opening move without incrementing player-turn counters."""
+
+        now = utcnow_iso()
+        with self._lock:
+            with self.engine.begin() as conn:
+                current = self._first_or_none(
+                    conn.execute(
+                        text("SELECT * FROM games WHERE id = :id AND session_index = :session_index"),
+                        {"id": int(game_id), "session_index": int(session_index)},
+                    ).mappings()
+                )
+                if current is None:
+                    raise KeyError(f"Game {game_id} not found or session mismatch.")
+                move_index = self._next_move_index(conn, game_id=game_id, session_index=session_index)
+                ai_row = self._insert_move_row(
+                    conn,
+                    game_id=game_id,
+                    session_index=session_index,
+                    move_index=move_index,
+                    actor="ai",
+                    action=int(ai_action),
+                    board_before=board_before,
+                    board_after=board_after,
+                    outcome="ongoing",
+                    created_at=now,
+                )
+                conn.execute(
+                    text(
+                        """
+                        UPDATE games
+                        SET current_board_json = :current_board_json,
+                            updated_at = :updated_at
+                        WHERE id = :id AND session_index = :session_index
+                        """
+                    ),
+                    {
+                        "current_board_json": json.dumps(board_after),
+                        "updated_at": now,
+                        "id": int(game_id),
+                        "session_index": int(session_index),
+                    },
+                )
+                updated = self._first_or_none(
+                    conn.execute(text("SELECT * FROM games WHERE id = :id"), {"id": int(game_id)}).mappings()
+                )
+                return ai_row, (updated or {})
+
+    def undo_last_turn(self, *, game_id: int, session_index: int) -> tuple[dict, dict] | None:
+        """Undo the latest move set (player+ai turn, or lone opening ai move)."""
+
+        now = utcnow_iso()
+        with self._lock:
+            with self.engine.begin() as conn:
+                current = self._first_or_none(
+                    conn.execute(
+                        text("SELECT * FROM games WHERE id = :id AND session_index = :session_index"),
+                        {"id": int(game_id), "session_index": int(session_index)},
+                    ).mappings()
+                )
+                if current is None:
+                    raise KeyError(f"Game {game_id} not found or session mismatch.")
+
+                rows = conn.execute(
+                    text(
+                        """
+                        SELECT * FROM moves
+                        WHERE game_id = :game_id AND session_index = :session_index
+                        ORDER BY move_index DESC, id DESC
+                        """
+                    ),
+                    {"game_id": int(game_id), "session_index": int(session_index)},
+                ).mappings().all()
+                if not rows:
+                    return None
+
+                last = dict(rows[0])
+                delete_ids: list[int] = []
+                undo_summary = {
+                    "kind": "",
+                    "removed_player": False,
+                    "removed_ai": False,
+                    "terminal_outcome_removed": None,
+                }
+                if str(last.get("actor")) == "ai":
+                    prev_player = self._first_or_none(
+                        conn.execute(
+                            text(
+                                """
+                                SELECT * FROM moves
+                                WHERE game_id = :game_id
+                                  AND session_index = :session_index
+                                  AND move_index = :move_index
+                                  AND actor = 'player'
+                                LIMIT 1
+                                """
+                            ),
+                            {
+                                "game_id": int(game_id),
+                                "session_index": int(session_index),
+                                "move_index": int(last["move_index"]) - 1,
+                            },
+                        ).mappings()
+                    )
+                    if prev_player is not None:
+                        delete_ids = [int(prev_player["id"]), int(last["id"])]
+                        board_revert = json.loads(str(prev_player["board_before_json"]))
+                        rounds_decrement = 1
+                        terminal = str(last.get("outcome") or prev_player.get("outcome") or "")
+                        undo_summary["kind"] = "turn"
+                        undo_summary["removed_player"] = True
+                        undo_summary["removed_ai"] = True
+                    else:
+                        delete_ids = [int(last["id"])]
+                        board_revert = json.loads(str(last["board_before_json"]))
+                        rounds_decrement = 0
+                        terminal = str(last.get("outcome") or "")
+                        undo_summary["kind"] = "opening_ai_move"
+                        undo_summary["removed_ai"] = True
+                else:
+                    delete_ids = [int(last["id"])]
+                    board_revert = json.loads(str(last["board_before_json"]))
+                    rounds_decrement = 1
+                    terminal = str(last.get("outcome") or "")
+                    undo_summary["kind"] = "player_only_turn"
+                    undo_summary["removed_player"] = True
+
+                score_player_dec = 1 if terminal == "player" and rounds_decrement > 0 else 0
+                score_ai_dec = 1 if terminal == "ai" and rounds_decrement > 0 else 0
+                score_tie_dec = 1 if terminal == "tie" and rounds_decrement > 0 else 0
+                undo_summary["terminal_outcome_removed"] = terminal if terminal in {"player", "ai", "tie"} else None
+
+                if len(delete_ids) == 1:
+                    conn.execute(
+                        text("DELETE FROM moves WHERE id = :id"),
+                        {"id": int(delete_ids[0])},
+                    )
+                else:
+                    conn.execute(
+                        text("DELETE FROM moves WHERE id = :id_one OR id = :id_two"),
+                        {"id_one": int(delete_ids[0]), "id_two": int(delete_ids[1])},
+                    )
+
+                conn.execute(
+                    text(
+                        """
+                        UPDATE games
+                        SET rounds_played = CASE
+                              WHEN rounds_played - :rounds_decrement < 0 THEN 0
+                              ELSE rounds_played - :rounds_decrement
+                            END,
+                            score_player = CASE
+                              WHEN score_player - :score_player_dec < 0 THEN 0
+                              ELSE score_player - :score_player_dec
+                            END,
+                            score_ai = CASE
+                              WHEN score_ai - :score_ai_dec < 0 THEN 0
+                              ELSE score_ai - :score_ai_dec
+                            END,
+                            score_ties = CASE
+                              WHEN score_ties - :score_tie_dec < 0 THEN 0
+                              ELSE score_ties - :score_tie_dec
+                            END,
+                            status = 'active',
+                            winner = NULL,
+                            current_board_json = :current_board_json,
+                            updated_at = :updated_at
+                        WHERE id = :id AND session_index = :session_index
+                        """
+                    ),
+                    {
+                        "rounds_decrement": int(rounds_decrement),
+                        "score_player_dec": int(score_player_dec),
+                        "score_ai_dec": int(score_ai_dec),
+                        "score_tie_dec": int(score_tie_dec),
+                        "current_board_json": json.dumps(board_revert),
+                        "updated_at": now,
+                        "id": int(game_id),
+                        "session_index": int(session_index),
+                    },
+                )
+                updated = self._first_or_none(
+                    conn.execute(text("SELECT * FROM games WHERE id = :id"), {"id": int(game_id)}).mappings()
+                )
+                undo_summary["removed_move_count"] = len(delete_ids)
+                undo_summary["removed_move_ids"] = delete_ids
+                undo_summary["rounds_decrement"] = int(rounds_decrement)
+                return (updated or {}), undo_summary
+
     def list_moves(self, game_id: int, session_index: int | None = None) -> list[dict]:
         query = "SELECT * FROM moves WHERE game_id = :game_id"
         params: dict[str, Any] = {"game_id": int(game_id)}
