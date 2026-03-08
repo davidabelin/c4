@@ -19,6 +19,11 @@ def play_page() -> str:
     return render_template("pages/play.html", default_agent=current_app.config["DEFAULT_AGENT"])
 
 
+@main_bp.get("/arena")
+def arena_page() -> str:
+    return render_template("pages/arena.html", default_agent=current_app.config["DEFAULT_AGENT"])
+
+
 @main_bp.get("/training")
 def training_page() -> str:
     return render_template("pages/train.html")

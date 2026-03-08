@@ -65,6 +65,63 @@ def test_create_move_and_reset_flow(client):
     assert reset.get_json()["game"]["rounds_played"] == 0
 
 
+def test_agent_vs_agent_match_endpoint_returns_trace(client):
+    response = client.post(
+        "/api/v1/matches",
+        json={
+            "agent_a": "alpha_beta_v9",
+            "agent_b": "adaptive_midrange",
+            "starting_agent": "agent_a",
+            "seed": 7,
+        },
+    )
+    assert response.status_code == 200
+    match = response.get_json()["match"]
+    assert match["mode"] == "agent_vs_agent"
+    assert match["starting_agent"] == "agent_a"
+    assert match["mark_agent_a"] == 1
+    assert match["mark_agent_b"] == 2
+    assert match["moves_played"] >= 1
+    assert len(match["trace"]) == int(match["moves_played"])
+    assert len(match["final_board"]) == 42
+    assert match["winner"] in {"agent_a", "agent_b", "tie"}
+    assert match["status"] in {"completed", "truncated"}
+    first_move = match["trace"][0]
+    assert first_move["actor"] == "agent_a"
+    assert len(first_move["board_after"]) == 42
+
+
+def test_arena_match_job_lifecycle_persists_trace(client):
+    create = client.post(
+        "/api/v1/arena/matches",
+        json={
+            "agent_a": "alpha_beta_v9",
+            "agent_b": "adaptive_midrange",
+            "starting_agent": "agent_a",
+            "seed": 7,
+        },
+    )
+    assert create.status_code == 202
+    match_id = int(create.get_json()["match"]["id"])
+
+    status = None
+    trace = None
+    for _ in range(120):
+        poll = client.get(f"/api/v1/arena/matches/{match_id}")
+        assert poll.status_code == 200
+        match = poll.get_json()["match"]
+        status = match["status"]
+        trace = match["trace"]
+        if status in {"completed", "failed"}:
+            break
+        time.sleep(0.05)
+
+    assert status == "completed"
+    assert trace is not None
+    assert len(trace) >= 1
+    assert trace[0]["actor"] == "agent_a"
+
+
 def test_ai_opening_and_undo_flow(client):
     response = client.post("/api/v1/games", json={"agent": "alpha_beta_v9", "opening_player": "ai"})
     assert response.status_code == 201
@@ -167,5 +224,4 @@ def test_rl_job_lifecycle_creates_model(client):
         if status in {"completed", "failed"}:
             break
         time.sleep(0.1)
-    # RL may fail if kaggle_environments is unavailable in the active env.
-    assert status in {"completed", "failed"}
+    assert status == "completed"

@@ -5,8 +5,8 @@
   <div class="panel">
     <h1>Reinforcement Learning Lab</h1>
     <p>
-      Train a tabular Q-learning Connect4 policy against built-in ConnectX opponents and store the resulting artifact
-      as an activatable model.
+      Train a tabular Q-learning Connect4 policy against local heuristic opponents and store the resulting artifact as
+      an activatable model.
     </p>
     <form id="rlForm" class="train-form">
       <label>
@@ -16,8 +16,10 @@
       <label>
         Opponent
         <select name="opponent">
-          <option value="negamax">negamax</option>
           <option value="random">random</option>
+          <option value="adaptive_midrange">adaptive_midrange</option>
+          <option value="alpha_beta_v9" selected>alpha_beta_v9</option>
+          <option value="time_boxed_pruner">time_boxed_pruner</option>
         </select>
       </label>
       <label>
@@ -60,10 +62,7 @@
         <button class="btn btn-primary" type="submit">Start RL Job</button>
       </div>
     </form>
-    <p class="status">
-      The UI is live everywhere. Actual RL execution still depends on an environment that has Kaggle ConnectX RL
-      dependencies installed.
-    </p>
+    <p class="status">RL training now runs on the local Connect4 engine, so the same job flow works in cloud deployments.</p>
   </div>
 
   <div class="panel">

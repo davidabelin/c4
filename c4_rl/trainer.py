@@ -1,4 +1,4 @@
-"""Tabular Q-learning trainer adapted from legacy ConnectX notebook workflow."""
+"""Tabular Q-learning trainer using the local Connect4 engine."""
 
 from __future__ import annotations
 
@@ -9,15 +9,9 @@ from random import Random
 
 import numpy as np
 
-try:
-    import gym
-    from kaggle_environments import make
-except Exception as exc:  # pragma: no cover
-    gym = None
-    make = None
-    KAGGLE_IMPORT_ERROR = str(exc)
-else:
-    KAGGLE_IMPORT_ERROR = None
+from c4_core.board import board_to_grid, drop_piece, has_any_four, valid_columns
+from c4_core.engine import select_ai_action
+from c4_core.types import Connect4Config
 
 
 @dataclass(slots=True)
@@ -32,9 +26,15 @@ class QTrainConfig:
     epsilon_decay: float = 0.9999
     alpha_decay_step: int = 1000
     alpha_decay_rate: float = 0.9
-    opponent: str = "negamax"
+    opponent: str = "alpha_beta_v9"
     switch_prob: float = 0.5
     seed: int = 7
+
+
+@dataclass(slots=True)
+class ConnectXState:
+    board: list[int]
+    mark: int
 
 
 def state_key(board: list[int], mark: int) -> str:
@@ -59,34 +59,110 @@ class QTable:
         return self.table[key]
 
 
+def _random_agent(obs, config) -> int:
+    valid = valid_columns(list(obs.board), config)
+    if not valid:
+        return 0
+    for preferred in (3, 4, 2, 5, 1, 6, 0):
+        if preferred in valid:
+            return preferred
+    return int(valid[0])
+
+
+def _resolve_opponent_agent(opponent_name: str):
+    normalized = str(opponent_name or "alpha_beta_v9").strip().lower()
+    if normalized == "random":
+        return "random", _random_agent
+
+    alias = {"negamax": "alpha_beta_v9"}.get(normalized, normalized)
+    from c4_agents.heuristic import AGENT_SPECS, build_heuristic_agent
+
+    if alias not in AGENT_SPECS:
+        raise ValueError(f"Unknown RL opponent '{opponent_name}'.")
+    return alias, build_heuristic_agent(alias)
+
+
 class ConnectXEnv:
-    """Thin wrapper around Kaggle ConnectX train API for notebook-parity RL."""
+    """Local Connect4 environment for learner-vs-opponent episodes."""
 
     def __init__(self, *, switch_prob: float, opponent: str) -> None:
-        if make is None or gym is None:
-            raise RuntimeError(
-                "kaggle_environments/gym are required for RL training."
-                + (f" Import error: {KAGGLE_IMPORT_ERROR}" if KAGGLE_IMPORT_ERROR else "")
-            )
-        self.env = make("connectx", debug=False)
+        self.config = Connect4Config(rows=6, columns=7, inarow=4)
         self.switch_prob = float(switch_prob)
-        self._opponent = str(opponent)
-        self._pair = [None, self._opponent]
-        self._trainer = self.env.train(self._pair)
-        cfg = self.env.configuration
-        self.action_space = gym.spaces.Discrete(int(cfg.columns))
+        self.action_space_n = int(self.config.columns)
+        self.opponent_name, self.opponent_agent = _resolve_opponent_agent(opponent)
+        self._board = [0] * (int(self.config.rows) * int(self.config.columns))
+        self._learner_mark = 1
+        self._opponent_mark = 2
+        self._rng = Random()
 
-    def _switch(self) -> None:
-        self._pair = self._pair[::-1]
-        self._trainer = self.env.train(self._pair)
+    def _reset_opponent(self, seed: int | None) -> None:
+        if hasattr(self.opponent_agent, "reset"):
+            try:
+                self.opponent_agent.reset(seed=seed)
+            except TypeError:
+                self.opponent_agent.reset(seed)
 
-    def reset(self, rng: Random):
-        if rng.random() < self.switch_prob:
-            self._switch()
-        return self._trainer.reset()
+    def reset(self, rng: Random) -> ConnectXState:
+        self._board = [0] * (int(self.config.rows) * int(self.config.columns))
+        episode_seed = int(rng.randrange(0, 2**31))
+        self._rng = Random(episode_seed)
+        learner_starts = self._rng.random() >= self.switch_prob
+        self._learner_mark = 1 if learner_starts else 2
+        self._opponent_mark = 2 if learner_starts else 1
+        self._reset_opponent(episode_seed)
 
-    def step(self, action: int):
-        return self._trainer.step(int(action))
+        if not learner_starts:
+            opening = select_ai_action(
+                self.opponent_agent,
+                self._board,
+                config=self.config,
+                mark=self._opponent_mark,
+                rng=self._rng,
+            )
+            grid = drop_piece(board_to_grid(self._board, self.config), opening, mark=self._opponent_mark, config=self.config)
+            self._board = grid.reshape(-1).astype(int).tolist()
+
+        return ConnectXState(board=list(self._board), mark=int(self._learner_mark))
+
+    def step(self, action: int) -> tuple[ConnectXState, float, bool, dict]:
+        valid = valid_columns(self._board, self.config)
+        if int(action) not in valid:
+            return ConnectXState(board=list(self._board), mark=int(self._learner_mark)), -1.0, True, {"illegal_move": True}
+
+        learner_grid = drop_piece(
+            board_to_grid(self._board, self.config),
+            int(action),
+            mark=self._learner_mark,
+            config=self.config,
+        )
+        learner_board = learner_grid.reshape(-1).astype(int).tolist()
+        if has_any_four(learner_grid, mark=self._learner_mark, config=self.config):
+            self._board = learner_board
+            return ConnectXState(board=list(self._board), mark=int(self._learner_mark)), 1.0, True, {"winner": "learner"}
+        if not valid_columns(learner_board, self.config):
+            self._board = learner_board
+            return ConnectXState(board=list(self._board), mark=int(self._learner_mark)), 0.0, True, {"winner": "tie"}
+
+        opponent_action = select_ai_action(
+            self.opponent_agent,
+            learner_board,
+            config=self.config,
+            mark=self._opponent_mark,
+            rng=self._rng,
+        )
+        opponent_grid = drop_piece(
+            board_to_grid(learner_board, self.config),
+            opponent_action,
+            mark=self._opponent_mark,
+            config=self.config,
+        )
+        self._board = opponent_grid.reshape(-1).astype(int).tolist()
+        if has_any_four(opponent_grid, mark=self._opponent_mark, config=self.config):
+            return ConnectXState(board=list(self._board), mark=int(self._learner_mark)), -1.0, True, {"winner": "opponent"}
+        if not valid_columns(self._board, self.config):
+            return ConnectXState(board=list(self._board), mark=int(self._learner_mark)), 0.0, True, {"winner": "tie"}
+
+        return ConnectXState(board=list(self._board), mark=int(self._learner_mark)), 0.0, False, {}
 
 
 def _valid_actions(board: list[int], columns: int) -> list[int]:
@@ -107,12 +183,12 @@ def _shaped_reward(done: bool, reward: float | int | None) -> float:
 
 
 def train_q_table(config: QTrainConfig) -> dict:
-    """Train a Q-table policy against one built-in Kaggle opponent."""
+    """Train a Q-table policy against a local opponent policy."""
 
     rng = Random(int(config.seed))
     np_rng = np.random.default_rng(int(config.seed))
     env = ConnectXEnv(switch_prob=config.switch_prob, opponent=config.opponent)
-    q_table = QTable(env.action_space.n)
+    q_table = QTable(env.action_space_n)
 
     epsilon = float(config.epsilon_start)
     alpha = float(config.alpha)
@@ -128,21 +204,21 @@ def train_q_table(config: QTrainConfig) -> dict:
         while not done:
             board = list(state.board)
             mark = int(state.mark)
-            valid = _valid_actions(board, env.action_space.n)
+            valid = _valid_actions(board, env.action_space_n)
             if not valid:
                 break
             if float(np_rng.random()) < epsilon:
                 action = int(rng.choice(valid))
             else:
                 row = q_table.row(board, mark)
-                masked = [row[idx] if idx in valid else -1e12 for idx in range(env.action_space.n)]
+                masked = [row[idx] if idx in valid else -1e12 for idx in range(env.action_space_n)]
                 action = int(np.argmax(masked))
 
             next_state, raw_reward, done, _info = env.step(action)
             reward = _shaped_reward(done, raw_reward)
 
             old_value = q_table.row(board, mark)[action]
-            next_max = float(np.max(q_table.row(list(next_state.board), int(next_state.mark))))
+            next_max = 0.0 if done else float(np.max(q_table.row(list(next_state.board), int(next_state.mark))))
             new_value = (1.0 - alpha) * old_value + alpha * (reward + float(config.gamma) * next_max)
             q_table.row(board, mark)[action] = float(new_value)
 
@@ -161,13 +237,14 @@ def train_q_table(config: QTrainConfig) -> dict:
 
     policy = {key: int(np.argmax(values)) for key, values in q_table.table.items()}
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "model_type": "rl_qtable",
         "config": asdict(config),
         "q_table": q_table.table,
         "policy": policy,
         "metrics": {
             "episodes": int(config.episodes),
+            "opponent": env.opponent_name,
             "q_table_states": len(q_table.table),
             "mean_episode_length": float(np.mean(episode_lengths)) if episode_lengths else 0.0,
             "mean_total_reward": float(np.mean(total_rewards)) if total_rewards else 0.0,

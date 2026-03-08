@@ -11,6 +11,7 @@ from flask import Blueprint, current_app, jsonify, request
 from c4_agents import ModelBackedAgent, build_heuristic_agent, list_agent_specs
 from c4_core.board import board_to_grid, drop_piece
 from c4_core.engine import play_human_turn, replay_ai_agent_state, select_ai_action
+from c4_core.matches import play_agent_match
 from c4_core.types import Connect4Config
 from c4_web.runtime import GameRuntimeState
 
@@ -53,6 +54,29 @@ def _serialize_game(game: dict) -> dict:
         "board": board,
         "updated_at": game["updated_at"],
     }
+
+
+def _available_agent_names() -> list[str]:
+    return [spec.name for spec in list_agent_specs()]
+
+
+def _default_match_opponent(agent_name: str) -> str:
+    for candidate in _available_agent_names():
+        if candidate != agent_name:
+            return candidate
+    return agent_name
+
+
+def _build_agent_from_name(agent_name: str):
+    if agent_name == "active_model":
+        model_record = _repo().get_active_model()
+        if model_record is None:
+            raise RuntimeError("No active model is available. Activate a trained model first.")
+        return ModelBackedAgent(str(model_record["artifact_path"]))
+    available = set(_available_agent_names())
+    if agent_name not in available:
+        raise KeyError(f"Unknown agent '{agent_name}'.")
+    return build_heuristic_agent(agent_name)
 
 
 def _resolve_agent_factory_and_signature(game: dict):
@@ -124,7 +148,7 @@ def create_game():
     if opening_player not in {"player", "ai", "random"}:
         return jsonify({"error": "opening_player must be one of: player, ai, random."}), 400
 
-    available = {spec.name for spec in list_agent_specs()}
+    available = set(_available_agent_names())
     if agent_name != "active_model" and agent_name not in available:
         return jsonify({"error": f"Unknown agent '{agent_name}'."}), 400
     if agent_name == "active_model" and _repo().get_active_model() is None:
@@ -277,3 +301,52 @@ def undo_last_turn(game_id: int):
     updated_game, undo_info = result
     _runtime().forget_game(game_id)
     return jsonify({"game": _serialize_game(updated_game), "undo": undo_info})
+
+
+@game_bp.post("/matches")
+def run_match():
+    """Run one non-persisted agent-vs-agent match and return a replay trace."""
+
+    payload = request.get_json(silent=True) or {}
+    agent_a_name = str(payload.get("agent_a", current_app.config["DEFAULT_AGENT"]))
+    agent_b_name = str(payload.get("agent_b", _default_match_opponent(agent_a_name)))
+    starting_agent = str(payload.get("starting_agent", "agent_a")).strip().lower()
+    if starting_agent not in {"agent_a", "agent_b", "random"}:
+        return jsonify({"error": "starting_agent must be one of: agent_a, agent_b, random."}), 400
+
+    raw_seed = payload.get("seed")
+    try:
+        seed = int(raw_seed) if raw_seed is not None else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "seed must be an integer when provided."}), 400
+
+    raw_max_turns = payload.get("max_turns")
+    try:
+        max_turns = int(raw_max_turns) if raw_max_turns is not None else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "max_turns must be an integer when provided."}), 400
+    if max_turns is not None and (max_turns <= 0 or max_turns > 42):
+        return jsonify({"error": "max_turns must be between 1 and 42."}), 400
+
+    if starting_agent == "random":
+        starting_agent = "agent_a" if Random(seed).random() < 0.5 else "agent_b"
+
+    try:
+        agent_a = _build_agent_from_name(agent_a_name)
+        agent_b = _build_agent_from_name(agent_b_name)
+    except KeyError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    match = play_agent_match(
+        agent_a=agent_a,
+        agent_b=agent_b,
+        agent_a_name=agent_a_name,
+        agent_b_name=agent_b_name,
+        config=_config(),
+        starting_agent=starting_agent,
+        max_turns=max_turns,
+        seed=seed,
+    )
+    return jsonify({"match": match})

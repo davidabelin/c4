@@ -10,6 +10,7 @@ from flask import Flask
 from c4_rl.jobs import RLJobManager
 from c4_storage.repository import C4Repository
 from c4_training.jobs import TrainingJobManager
+from c4_web.match_jobs import MatchJobManager
 from c4_web.runtime import GameRuntimeCache
 
 
@@ -68,6 +69,7 @@ def create_app(config: dict | None = None) -> Flask:
         TRAINING_WORKER_SERVICE_ACCOUNT=os.getenv("C4_TRAINING_WORKER_SERVICE_ACCOUNT", ""),
         INTERNAL_WORKER_TOKEN=os.getenv("C4_INTERNAL_WORKER_TOKEN", ""),
         INTERNAL_WORKER_TOKEN_SECRET=os.getenv("C4_INTERNAL_WORKER_TOKEN_SECRET", ""),
+        AGENT_MATCH_DEFAULT_TURNS=int(os.getenv("C4_AGENT_MATCH_DEFAULT_TURNS", "42")),
         AIX_HUB_URL=os.getenv("AIX_HUB_URL", "/"),
     )
     if config:
@@ -103,7 +105,9 @@ def create_app(config: dict | None = None) -> Flask:
     app.extensions["training_jobs"] = training_jobs
     app.extensions["game_runtime"] = GameRuntimeCache(max_entries=256)
     app.extensions["rl_jobs"] = RLJobManager(repository, models_dir=app.config["MODELS_DIR"])
+    app.extensions["match_jobs"] = MatchJobManager(repository, default_agent=app.config["DEFAULT_AGENT"])
 
+    from c4_web.blueprints.arena import arena_bp
     from c4_web.blueprints.game import game_bp
     from c4_web.blueprints.main import main_bp
     from c4_web.blueprints.rl import rl_bp
@@ -111,6 +115,7 @@ def create_app(config: dict | None = None) -> Flask:
 
     app.register_blueprint(main_bp)
     app.register_blueprint(game_bp)
+    app.register_blueprint(arena_bp)
     app.register_blueprint(training_bp)
     app.register_blueprint(rl_bp)
 

@@ -40,7 +40,7 @@ class RLJobManager:
             epsilon_decay=float(payload.get("epsilon_decay", 0.9999)),
             alpha_decay_step=int(payload.get("alpha_decay_step", 1000)),
             alpha_decay_rate=float(payload.get("alpha_decay_rate", 0.9)),
-            opponent=str(payload.get("opponent", "negamax")),
+            opponent=str(payload.get("opponent", "alpha_beta_v9")),
             switch_prob=float(payload.get("switch_prob", 0.5)),
             seed=int(payload.get("seed", 7)),
         )

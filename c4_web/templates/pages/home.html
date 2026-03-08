@@ -8,6 +8,11 @@
     This lab follows the same AIX structure as RPS while using Connect4-specific
     gameplay/training/RL APIs.
   </p>
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="{{ url_for('main.play_page') }}">Open Play</a>
+    <a class="btn btn-secondary" href="{{ url_for('main.arena_page') }}">Open Arena</a>
+    <a class="btn btn-secondary" href="{{ url_for('main.rl_page') }}">Open RL</a>
+  </div>
 </section>
 
 <section class="grid">
@@ -17,14 +22,14 @@
     <a class="btn btn-primary" href="{{ url_for('main.play_page') }}">Open Play</a>
   </article>
   <article class="card">
+    <h2>Agent Arena</h2>
+    <p>Run head-to-head matches, stream board updates live, and replay stored traces.</p>
+    <a class="btn btn-secondary" href="{{ url_for('main.arena_page') }}">Open Arena</a>
+  </article>
+  <article class="card">
     <h2>Training Scaffold</h2>
     <p>Model jobs and registry hooks are available under the training API.</p>
     <a class="btn btn-secondary" href="{{ url_for('main.training_page') }}">Open Training</a>
-  </article>
-  <article class="card">
-    <h2>RL Scaffold</h2>
-    <p>RL job lifecycle endpoints are active for iterative policy experiments.</p>
-    <a class="btn btn-secondary" href="{{ url_for('main.rl_page') }}">Open RL</a>
   </article>
 </section>
 {% endblock %}

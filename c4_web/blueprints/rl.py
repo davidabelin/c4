@@ -62,7 +62,7 @@ def create_rl_job():
     payload.setdefault("epsilon_decay", 0.9999)
     payload.setdefault("alpha_decay_step", 1000)
     payload.setdefault("alpha_decay_rate", 0.9)
-    payload.setdefault("opponent", "negamax")
+    payload.setdefault("opponent", "alpha_beta_v9")
     payload.setdefault("switch_prob", 0.5)
     payload.setdefault("seed", 7)
     job = _jobs().submit_job(payload)

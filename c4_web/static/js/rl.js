@@ -27,7 +27,7 @@
   function payloadFromForm(formData) {
     return {
       episodes: Number(formData.get("episodes") || 300),
-      opponent: String(formData.get("opponent") || "negamax"),
+      opponent: String(formData.get("opponent") || "alpha_beta_v9"),
       alpha: Number(formData.get("alpha") || 0.1),
       gamma: Number(formData.get("gamma") || 0.6),
       epsilon_start: Number(formData.get("epsilon_start") || 0.99),

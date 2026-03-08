@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Connect4 Agent Lab | Arena{% endblock %}
+{% block content %}
+<section class="stack play-stack">
+  <div class="panel play-hero">
+    <div>
+      <p class="eyebrow">Agent vs Agent</p>
+      <h1>Connect4 Arena</h1>
+      <p class="lede">Launch persisted matches, stream board updates live, and replay completed traces.</p>
+    </div>
+    <div class="hero-status">
+      <div class="status-card">
+        <span class="status-kicker">Arena Status</span>
+        <p id="arenaStatus" class="status">No arena match active.</p>
+      </div>
+      <div class="status-card">
+        <span class="status-kicker">Playback</span>
+        <p id="arenaPlaybackStatus" class="status">Ready</p>
+      </div>
+    </div>
+  </div>
+
+  <section class="play-layout">
+    <div class="panel play-setup-panel">
+      <div class="panel-head">
+        <h2>Match Setup</h2>
+        <p class="panel-note">Two agents, one board, persisted trace.</p>
+      </div>
+      <form id="arenaForm" class="controls-grid connect4-controls">
+        <label>
+          Agent A
+          <select id="agentASelect" name="agent_a"></select>
+        </label>
+        <label>
+          Agent B
+          <select id="agentBSelect" name="agent_b"></select>
+        </label>
+        <label>
+          Opening Agent
+          <select id="startingAgentSelect" name="starting_agent">
+            <option value="agent_a">Agent A</option>
+            <option value="agent_b">Agent B</option>
+            <option value="random">Random</option>
+          </select>
+        </label>
+        <label>
+          Seed
+          <input id="arenaSeedInput" name="seed" type="number" min="0" step="1" value="7">
+        </label>
+        <label>
+          Playback
+          <select id="arenaSpeedSelect">
+            <option value="900">Slow</option>
+            <option value="550" selected>Normal</option>
+            <option value="250">Fast</option>
+          </select>
+        </label>
+      </form>
+      <div class="controls-row play-actions">
+        <button id="startArenaBtn" class="btn btn-primary" type="submit" form="arenaForm">Start Match</button>
+        <button id="pauseArenaBtn" class="btn btn-secondary" type="button">Pause</button>
+      </div>
+    </div>
+
+    <div class="panel board-panel">
+      <div class="board-panel-top">
+        <div>
+          <h2>Board</h2>
+          <p id="arenaOutcomeBanner" class="board-outcome">Start a match to begin playback.</p>
+        </div>
+        <p class="board-tip">Live frames arrive through the arena event stream.</p>
+      </div>
+      <div class="board-shell">
+        <div id="spectatorColumnLabels" class="board-controls"></div>
+        <div id="boardGrid" class="board-grid" aria-label="Connect4 arena board"></div>
+      </div>
+    </div>
+
+    <div class="play-sidebar">
+      <div class="panel score-panel">
+        <div class="panel-head compact">
+          <h2>Match Summary</h2>
+          <p class="panel-note">Current persisted state of the replay.</p>
+        </div>
+        <div class="meter">
+          <div id="arenaProgress" class="meter-fill"></div>
+        </div>
+        <div class="score-grid">
+          <article class="score-card">
+            <span class="score-label">Moves Shown</span>
+            <strong id="arenaMovesShown">0</strong>
+          </article>
+          <article class="score-card">
+            <span class="score-label">Winner</span>
+            <strong id="arenaWinner">-</strong>
+          </article>
+          <article class="score-card score-card-wide">
+            <span class="score-label">Match ID</span>
+            <strong id="arenaMatchId">-</strong>
+          </article>
+        </div>
+      </div>
+
+      <div class="panel log-panel">
+        <div class="panel-head compact">
+          <h2>Move Log</h2>
+          <p class="panel-note">Latest move appears first.</p>
+        </div>
+        <ul id="moveLog" class="log-list"></ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="panel-head compact">
+      <h2>Recent Matches</h2>
+      <button id="refreshArenaMatchesBtn" class="btn btn-secondary" type="button">Refresh</button>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Status</th>
+            <th>Matchup</th>
+            <th>Winner</th>
+            <th>Starting</th>
+            <th>Replay</th>
+          </tr>
+        </thead>
+        <tbody id="arenaMatchesTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+<script src="{{ url_for('static', filename='js/arena.js') }}"></script>
+{% endblock %}
