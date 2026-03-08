@@ -3,11 +3,98 @@
 {% block content %}
 <section class="stack">
   <div class="panel">
-    <h1>Reinforcement Learning</h1>
-    <p>RL job lifecycle endpoints are active at <code>/api/v1/rl/*</code>.</p>
-    <p class="status">
-      Next phase: add job form/status panels mirroring the RPS RL page with Connect4-specific options.
+    <h1>Reinforcement Learning Lab</h1>
+    <p>
+      Train a tabular Q-learning Connect4 policy against built-in ConnectX opponents and store the resulting artifact
+      as an activatable model.
     </p>
+    <form id="rlForm" class="train-form">
+      <label>
+        Episodes
+        <input name="episodes" type="number" min="10" step="10" value="300">
+      </label>
+      <label>
+        Opponent
+        <select name="opponent">
+          <option value="negamax">negamax</option>
+          <option value="random">random</option>
+        </select>
+      </label>
+      <label>
+        Alpha
+        <input name="alpha" type="number" step="0.01" value="0.10">
+      </label>
+      <label>
+        Gamma
+        <input name="gamma" type="number" step="0.01" value="0.60">
+      </label>
+      <label>
+        Epsilon Start
+        <input name="epsilon_start" type="number" step="0.01" value="0.99">
+      </label>
+      <label>
+        Epsilon End
+        <input name="epsilon_end" type="number" step="0.01" value="0.10">
+      </label>
+      <label>
+        Epsilon Decay
+        <input name="epsilon_decay" type="number" step="0.0001" value="0.9999">
+      </label>
+      <label>
+        Alpha Decay Step
+        <input name="alpha_decay_step" type="number" min="1" step="100" value="1000">
+      </label>
+      <label>
+        Alpha Decay Rate
+        <input name="alpha_decay_rate" type="number" step="0.01" value="0.90">
+      </label>
+      <label>
+        Switch Probability
+        <input name="switch_prob" type="number" min="0" max="1" step="0.05" value="0.50">
+      </label>
+      <label>
+        Seed
+        <input name="seed" type="number" min="0" step="1" value="7">
+      </label>
+      <div class="controls-row form-actions">
+        <button class="btn btn-primary" type="submit">Start RL Job</button>
+      </div>
+    </form>
+    <p class="status">
+      The UI is live everywhere. Actual RL execution still depends on an environment that has Kaggle ConnectX RL
+      dependencies installed.
+    </p>
+  </div>
+
+  <div class="panel">
+    <h2>RL Job Status</h2>
+    <p id="rlJobStatus">No active RL job.</p>
+    <div class="meter">
+      <div id="rlJobProgress" class="meter-fill"></div>
+    </div>
+    <pre id="rlJobMetrics" class="metrics">No metrics yet.</pre>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head compact">
+      <h2>Recent RL Jobs</h2>
+      <button id="refreshRlJobsBtn" class="btn btn-secondary" type="button">Refresh RL Jobs</button>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Status</th>
+            <th>Progress</th>
+            <th>Model ID</th>
+            <th>Opponent</th>
+            <th>Final 100 Avg Reward</th>
+          </tr>
+        </thead>
+        <tbody id="rlJobsTableBody"></tbody>
+      </table>
+    </div>
   </div>
 </section>
 <script src="{{ url_for('static', filename='js/rl.js') }}"></script>
