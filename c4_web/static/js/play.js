@@ -33,6 +33,7 @@
 
   let currentGame = null;
   let currentBoard = Array(rows * cols).fill(0);
+  let recentCellIndices = new Set();
   let isBusy = false;
   let timerTick = null;
   let timerRemaining = 0;
@@ -117,20 +118,20 @@
   function startTurnTimer() {
     stopTurnTimer();
     if (!currentGame || currentGame.status !== "active") {
-      turnTimerStatus.textContent = "Turn timer: -";
+      turnTimerStatus.textContent = "Move clock: -";
       return;
     }
     timerRemaining = timerSeconds();
-    turnTimerStatus.textContent = `Turn timer: ${timerRemaining}s`;
+    turnTimerStatus.textContent = `Move clock: ${timerRemaining}s`;
     timerTick = window.setInterval(() => {
       timerRemaining -= 1;
       if (timerRemaining <= 0) {
         stopTurnTimer();
-        turnTimerStatus.textContent = "Turn timer expired. Auto-playing a random legal move...";
+        turnTimerStatus.textContent = "Move clock expired. Auto-playing a random legal move...";
         autoPlayRandomMove();
         return;
       }
-      turnTimerStatus.textContent = `Turn timer: ${timerRemaining}s`;
+      turnTimerStatus.textContent = `Move clock: ${timerRemaining}s`;
     }, 1000);
   }
 
@@ -142,6 +143,7 @@
     boardGrid.innerHTML = "";
     for (let row = 0; row < rows; row += 1) {
       for (let col = 0; col < cols; col += 1) {
+        const index = row * cols + col;
         const value = boardAt(row, col);
         const cell = document.createElement("div");
         cell.className = "cell";
@@ -150,6 +152,12 @@
         } else if (value === 2) {
           cell.classList.add("ai");
         }
+        if (recentCellIndices.has(index)) {
+          cell.classList.add("recent");
+        }
+        const core = document.createElement("span");
+        core.className = "cell-core";
+        cell.appendChild(core);
         boardGrid.appendChild(cell);
       }
     }
@@ -228,8 +236,17 @@
   }
 
   function applyGamePayload(game) {
+    const nextBoard = Array.isArray(game.board) ? game.board.slice() : Array(rows * cols).fill(0);
+    recentCellIndices = new Set();
+    for (let index = 0; index < rows * cols; index += 1) {
+      const before = Number(currentBoard[index] || 0);
+      const after = Number(nextBoard[index] || 0);
+      if (before !== after && after !== 0) {
+        recentCellIndices.add(index);
+      }
+    }
     currentGame = game;
-    currentBoard = Array.isArray(game.board) ? game.board.slice() : Array(rows * cols).fill(0);
+    currentBoard = nextBoard;
     updateScore(game);
     renderBoard();
     resetBtn.disabled = false;
@@ -263,8 +280,10 @@
       setStatus(`Game ${body.game.game_id} started vs ${body.game.agent_name}.`);
       if (body.opening_move && body.opening_move.actor === "ai") {
         pushLog(`AI opening move: column ${Number(body.opening_move.action) + 1}.`);
+        setOutcome("Agent opened the board. Your move.");
+      } else {
+        setOutcome("Your move.");
       }
-      setOutcome("Your turn.");
       setInteractive(true);
       startTurnTimer();
     } catch (error) {
@@ -375,7 +394,7 @@
       undoUsed = true;
       updateUndoButtonState();
       pushLog(`Undo applied (${body.undo.kind}).`);
-      setOutcome("Turn undone.");
+      setOutcome("Board rewound one step.");
       setStatus("Undo complete.");
       setInteractive(true);
       if (currentGame.status === "active") {
@@ -409,7 +428,7 @@
       undoUsed = false;
       resetLog();
       applyGamePayload(body.game);
-      setOutcome("Board reset. Your turn.");
+      setOutcome("Fresh board ready. Your move.");
       setStatus(`Game ${body.game.game_id} reset.`);
       setInteractive(true);
       startTurnTimer();

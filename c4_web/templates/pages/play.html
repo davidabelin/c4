@@ -1,75 +1,133 @@
 {% extends "base.html" %}
 {% block title %}Connect4 Agent Lab | Play{% endblock %}
 {% block content %}
-<section class="stack">
-  <div class="panel">
-    <h1>Play</h1>
-    <p>Classic Connect4 with configurable opening policy, timer, undo mode, and AI difficulty ladder.</p>
-    <div class="controls-grid">
-      <label>
-        Difficulty
-        <select id="difficultySelect">
-          <option value="easy">Easy</option>
-          <option value="medium">Medium</option>
-          <option value="hard">Hard</option>
-          <option value="custom">Custom Agent</option>
-        </select>
-      </label>
-      <label id="agentSelectWrap" class="is-hidden">
-        Agent
-        <select id="agentSelect"></select>
-      </label>
-      <label>
-        Opening Player
-        <select id="openingPlayerSelect">
-          <option value="player">Human First</option>
-          <option value="ai">AI First</option>
-          <option value="random">Random</option>
-        </select>
-      </label>
-      <label>
-        Turn Timer (sec)
-        <input id="timerSecondsInput" type="number" min="5" max="300" value="20">
-      </label>
-      <label>
-        Undo Mode
-        <select id="undoModeSelect">
-          <option value="unlimited">Unlimited</option>
-          <option value="single">Single Undo</option>
-          <option value="off">Off</option>
-        </select>
-      </label>
+<section class="stack play-stack">
+  <div class="panel play-hero">
+    <div>
+      <p class="eyebrow">Human vs Agent</p>
+      <h1>Play Connect4</h1>
+      <p class="lede">
+        Choose an opponent, set the opening policy, and test live gameplay on a board that now scales with the viewport.
+      </p>
     </div>
-    <div class="controls-row">
-      <button id="newGameBtn" class="btn btn-primary" type="button">New Game</button>
-      <button id="undoBtn" class="btn btn-secondary" type="button" disabled>Undo</button>
-      <button id="resetBtn" class="btn btn-secondary" type="button" disabled>Reset</button>
+    <div class="hero-status">
+      <div class="status-card">
+        <span class="status-kicker">Session</span>
+        <p id="gameStatus" class="status">No active game.</p>
+      </div>
+      <div class="status-card">
+        <span class="status-kicker">Move Clock</span>
+        <p id="turnTimerStatus" class="status">Move clock: -</p>
+      </div>
     </div>
-    <p id="gameStatus" class="status">No active game.</p>
-    <p id="turnTimerStatus" class="status">Turn timer: -</p>
   </div>
 
-  <div class="panel">
-    <h2>Board</h2>
-    <div id="columnButtons" class="board-controls"></div>
-    <div id="boardGrid" class="board-grid" aria-label="Connect4 board"></div>
-  </div>
-
-  <div class="panel">
-    <h2>Score</h2>
-    <div class="score-row">
-      <span>Wins: <strong id="wins">0</strong></span>
-      <span>Losses: <strong id="losses">0</strong></span>
-      <span>Ties: <strong id="ties">0</strong></span>
-      <span>Turns: <strong id="rounds">0</strong></span>
+  <section class="play-layout">
+    <div class="panel play-setup-panel">
+      <div class="panel-head">
+        <h2>Match Setup</h2>
+        <p class="panel-note">Difficulty ladder, opening policy, and optional safety rails.</p>
+      </div>
+      <div class="controls-grid connect4-controls">
+        <label>
+          Difficulty
+          <select id="difficultySelect">
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+            <option value="custom">Custom Agent</option>
+          </select>
+        </label>
+        <label id="agentSelectWrap" class="is-hidden">
+          Agent
+          <select id="agentSelect"></select>
+        </label>
+        <label>
+          Opening Player
+          <select id="openingPlayerSelect">
+            <option value="player">Human First</option>
+            <option value="ai">AI First</option>
+            <option value="random">Random</option>
+          </select>
+        </label>
+      </div>
+      <details class="inline-details play-details">
+        <summary>Advanced controls</summary>
+        <div class="controls-grid controls-grid-compact">
+          <label>
+            Move Timer (sec)
+            <input id="timerSecondsInput" type="number" min="5" max="300" value="20">
+          </label>
+          <label>
+            Undo Mode
+            <select id="undoModeSelect">
+              <option value="unlimited">Unlimited</option>
+              <option value="single">Single Undo</option>
+              <option value="off">Off</option>
+            </select>
+          </label>
+        </div>
+      </details>
+      <div class="controls-row play-actions">
+        <button id="newGameBtn" class="btn btn-primary" type="button">New Game</button>
+        <button id="undoBtn" class="btn btn-secondary" type="button" disabled>Undo</button>
+        <button id="resetBtn" class="btn btn-secondary" type="button" disabled>Reset</button>
+      </div>
+      <div class="play-legend">
+        <span class="legend-chip"><span class="legend-disc player"></span>Human disc</span>
+        <span class="legend-chip"><span class="legend-disc ai"></span>Agent disc</span>
+      </div>
     </div>
-    <p id="outcomeBanner" class="status">Start a game to begin.</p>
-  </div>
 
-  <div class="panel">
-    <h2>Move Log</h2>
-    <ul id="moveLog" class="log-list"></ul>
-  </div>
+    <div class="panel board-panel">
+      <div class="board-panel-top">
+        <div>
+          <h2>Board</h2>
+          <p id="outcomeBanner" class="board-outcome">Start a game to begin.</p>
+        </div>
+        <p class="board-tip">Use the arrows above the board to drop into a column.</p>
+      </div>
+      <div class="board-shell">
+        <div id="columnButtons" class="board-controls"></div>
+        <div id="boardGrid" class="board-grid" aria-label="Connect4 board"></div>
+      </div>
+    </div>
+
+    <div class="play-sidebar">
+      <div class="panel score-panel">
+        <div class="panel-head compact">
+          <h2>Session Score</h2>
+          <p class="panel-note">Running totals for the current session.</p>
+        </div>
+        <div class="score-grid">
+          <article class="score-card">
+            <span class="score-label">Wins</span>
+            <strong id="wins">0</strong>
+          </article>
+          <article class="score-card">
+            <span class="score-label">Losses</span>
+            <strong id="losses">0</strong>
+          </article>
+          <article class="score-card">
+            <span class="score-label">Ties</span>
+            <strong id="ties">0</strong>
+          </article>
+          <article class="score-card score-card-wide">
+            <span class="score-label">Turns Played</span>
+            <strong id="rounds">0</strong>
+          </article>
+        </div>
+      </div>
+
+      <div class="panel log-panel">
+        <div class="panel-head compact">
+          <h2>Move Log</h2>
+          <p class="panel-note">Latest turn appears first.</p>
+        </div>
+        <ul id="moveLog" class="log-list"></ul>
+      </div>
+    </div>
+  </section>
 </section>
 <script src="{{ url_for('static', filename='js/play.js') }}"></script>
 {% endblock %}
