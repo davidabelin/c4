@@ -43,6 +43,13 @@
   let undoUsed = false;
   let forecastMap = {};
   let forecastRecommendedColumn = null;
+  let sessionTotals = {
+    wins: 0,
+    losses: 0,
+    ties: 0,
+    turns: 0,
+    lastCompletedGameId: null,
+  };
 
   function setStatus(text) {
     gameStatus.textContent = text;
@@ -78,7 +85,7 @@
   }
 
   function timerSeconds() {
-    return clamp(parseNumber(timerSecondsInput.value, 20), 5, 300);
+    return clamp(parseNumber(timerSecondsInput.value, 120), 5, 300);
   }
 
   function updateUndoButtonState() {
@@ -169,11 +176,45 @@
     setInteractive(!isBusy);
   }
 
-  function updateScore(game) {
-    winsEl.textContent = String(game.score_player || 0);
-    lossesEl.textContent = String(game.score_ai || 0);
-    tiesEl.textContent = String(game.score_ties || 0);
-    roundsEl.textContent = String(game.rounds_played || 0);
+  function renderSessionScore() {
+    const liveTurns =
+      currentGame && currentGame.status === "active"
+        ? Number(currentGame.rounds_played || 0)
+        : 0;
+    winsEl.textContent = String(sessionTotals.wins || 0);
+    lossesEl.textContent = String(sessionTotals.losses || 0);
+    tiesEl.textContent = String(sessionTotals.ties || 0);
+    roundsEl.textContent = String((sessionTotals.turns || 0) + liveTurns);
+  }
+
+  function updateSessionTotalsFromGame(game) {
+    if (!game) {
+      return;
+    }
+    if (game.status !== "completed") {
+      return;
+    }
+    const gameId = Number(game.game_id);
+    if (sessionTotals.lastCompletedGameId === gameId) {
+      return;
+    }
+    sessionTotals.wins += Number(game.score_player || 0);
+    sessionTotals.losses += Number(game.score_ai || 0);
+    sessionTotals.ties += Number(game.score_ties || 0);
+    sessionTotals.turns += Number(game.rounds_played || 0);
+    sessionTotals.lastCompletedGameId = gameId;
+    renderSessionScore();
+  }
+
+  function resetSessionTotals() {
+    sessionTotals = {
+      wins: 0,
+      losses: 0,
+      ties: 0,
+      turns: 0,
+      lastCompletedGameId: null,
+    };
+    renderSessionScore();
   }
 
   function outcomeText(outcome) {
@@ -259,7 +300,8 @@
     }
     currentGame = game;
     currentBoard = nextBoard;
-    updateScore(game);
+    updateSessionTotalsFromGame(game);
+    renderSessionScore();
     renderBoard();
     buildColumnButtons();
     resetBtn.disabled = false;
@@ -343,8 +385,12 @@
         setStatus(`Failed to create game: ${body.error || "unknown error"}`);
         return;
       }
+      const startingFreshSession = !currentGame;
       undoUsed = false;
       resetLog();
+      if (startingFreshSession) {
+        resetSessionTotals();
+      }
       applyGamePayload(body.game);
       setStatus(`Game ${body.game.game_id} started vs ${body.game.agent_name}.`);
       if (body.opening_move && body.opening_move.actor === "ai") {
@@ -538,6 +584,7 @@
   buildColumnButtons();
   renderBoard();
   clearForecasts("Forecasts use a heuristic lookahead estimate.");
+  renderSessionScore();
   setInteractive(true);
   updateDifficultyUi();
   fetchAgents()
