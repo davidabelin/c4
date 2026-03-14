@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
+import math
+import random as pyrandom
 from random import Random
 from time import perf_counter
 
 from flask import Blueprint, current_app, jsonify, request
 
 from c4_agents import ModelBackedAgent, build_heuristic_agent, list_agent_specs
-from c4_core.board import board_to_grid, drop_piece
+from c4_core.board import board_to_grid, drop_piece, has_any_four, valid_columns
 from c4_core.engine import play_human_turn, replay_ai_agent_state, select_ai_action
 from c4_core.matches import play_agent_match
 from c4_core.types import Connect4Config
@@ -115,6 +117,147 @@ def _load_runtime_state(game: dict) -> GameRuntimeState:
     )
     _runtime().put(state)
     return state
+
+
+def _terminal_outcome_for_board(board: list[int]) -> str | None:
+    grid = board_to_grid(board, _config())
+    if has_any_four(grid, mark=1, config=_config()):
+        return "player"
+    if has_any_four(grid, mark=2, config=_config()):
+        return "ai"
+    if not valid_columns(board, _config()):
+        return "tie"
+    return None
+
+
+def _window_score(window: list[int], perspective_mark: int, inarow: int) -> float:
+    opponent_mark = 1 if perspective_mark == 2 else 2
+    perspective_count = window.count(perspective_mark)
+    opponent_count = window.count(opponent_mark)
+    empty_count = window.count(0)
+    if perspective_count and opponent_count:
+        return 0.0
+    if perspective_count == inarow:
+        return 500.0
+    if opponent_count == inarow:
+        return -500.0
+    if perspective_count == inarow - 1 and empty_count == 1:
+        return 36.0
+    if opponent_count == inarow - 1 and empty_count == 1:
+        return -44.0
+    if perspective_count == inarow - 2 and empty_count == 2:
+        return 8.0
+    if opponent_count == inarow - 2 and empty_count == 2:
+        return -10.0
+    return 0.0
+
+
+def _heuristic_probability(board: list[int], perspective_mark: int) -> float:
+    config = _config()
+    grid = board_to_grid(board, config)
+    score = 0.0
+
+    center_col = int(config.columns) // 2
+    center_values = [int(grid[row, center_col]) for row in range(int(config.rows))]
+    score += 3.0 * center_values.count(int(perspective_mark))
+    score -= 3.0 * center_values.count(1 if perspective_mark == 2 else 2)
+
+    for row in range(int(config.rows)):
+        for col in range(int(config.columns) - int(config.inarow) + 1):
+            score += _window_score(list(grid[row, col : col + int(config.inarow)]), perspective_mark, int(config.inarow))
+    for row in range(int(config.rows) - int(config.inarow) + 1):
+        for col in range(int(config.columns)):
+            score += _window_score(list(grid[row : row + int(config.inarow), col]), perspective_mark, int(config.inarow))
+    for row in range(int(config.rows) - int(config.inarow) + 1):
+        for col in range(int(config.columns) - int(config.inarow) + 1):
+            score += _window_score(
+                [int(grid[row + step, col + step]) for step in range(int(config.inarow))],
+                perspective_mark,
+                int(config.inarow),
+            )
+    for row in range(int(config.inarow) - 1, int(config.rows)):
+        for col in range(int(config.columns) - int(config.inarow) + 1):
+            score += _window_score(
+                [int(grid[row - step, col + step]) for step in range(int(config.inarow))],
+                perspective_mark,
+                int(config.inarow),
+            )
+
+    return float(1.0 / (1.0 + math.exp(-score / 28.0)))
+
+
+def _outcome_to_probability(outcome: str, perspective_mark: int) -> float:
+    if outcome == "tie":
+        return 0.5
+    if outcome == "player":
+        return 1.0 if perspective_mark == 1 else 0.0
+    if outcome == "ai":
+        return 1.0 if perspective_mark == 2 else 0.0
+    return 0.5
+
+
+def _simulate_guided_outcome(
+    board: list[int],
+    *,
+    next_mark: int,
+    perspective_mark: int,
+    lookahead: int,
+    sample_index: int,
+) -> float:
+    working = list(board)
+    current_mark = int(next_mark)
+    seed_value = 1009 + sample_index * 131 + lookahead * 17 + sum((idx + 1) * int(value) for idx, value in enumerate(board))
+    saved_state = pyrandom.getstate()
+    pyrandom.seed(seed_value)
+    try:
+        for _ in range(max(0, int(lookahead))):
+            terminal = _terminal_outcome_for_board(working)
+            if terminal is not None:
+                return _outcome_to_probability(terminal, perspective_mark)
+            agent = build_heuristic_agent("alpha_beta_v9")
+            action = select_ai_action(agent, working, config=_config(), mark=current_mark, rng=Random(seed_value))
+            next_grid = drop_piece(board_to_grid(working, _config()), action, mark=current_mark, config=_config())
+            working = next_grid.reshape(-1).astype(int).tolist()
+            current_mark = 1 if current_mark == 2 else 2
+    finally:
+        pyrandom.setstate(saved_state)
+
+    terminal = _terminal_outcome_for_board(working)
+    if terminal is not None:
+        return _outcome_to_probability(terminal, perspective_mark)
+    return _heuristic_probability(working, perspective_mark)
+
+
+def _forecast_columns(board: list[int], lookahead: int, samples: int) -> list[dict]:
+    forecasts: list[dict] = []
+    config = _config()
+    for column in valid_columns(board, config):
+        next_grid = drop_piece(board_to_grid(board, config), column, mark=1, config=config)
+        board_after_player = next_grid.reshape(-1).astype(int).tolist()
+        immediate = _terminal_outcome_for_board(board_after_player)
+        if immediate is not None:
+            win_estimate = _outcome_to_probability(immediate, 1)
+        else:
+            estimates = [
+                _simulate_guided_outcome(
+                    board_after_player,
+                    next_mark=2,
+                    perspective_mark=1,
+                    lookahead=max(0, int(lookahead) - 1),
+                    sample_index=sample_index,
+                )
+                for sample_index in range(max(1, int(samples)))
+            ]
+            win_estimate = float(sum(estimates) / len(estimates))
+        forecasts.append(
+            {
+                "column": int(column),
+                "win_estimate": round(float(win_estimate), 4),
+                "label": f"{round(float(win_estimate) * 100)}%",
+            }
+        )
+    forecasts.sort(key=lambda item: (-float(item["win_estimate"]), int(item["column"])))
+    return forecasts
 
 
 @game_bp.get("/agents")
@@ -273,6 +416,33 @@ def play_move(game_id: int):
                 "server_elapsed_ms": int(round((perf_counter() - started) * 1000)),
             },
             "moves": inserted_moves,
+        }
+    )
+
+
+@game_bp.get("/games/<int:game_id>/analysis")
+def analyze_game(game_id: int):
+    game = _repo().get_game(game_id)
+    if game is None:
+        return jsonify({"error": "Game not found."}), 404
+
+    board = _decode_board(game.get("current_board_json", "[]"))
+    lookahead = max(1, min(10, int(request.args.get("lookahead", 4))))
+    samples = max(4, min(32, int(request.args.get("samples", 12))))
+
+    if str(game.get("status")) != "active":
+        return jsonify({"analysis": {"lookahead": lookahead, "samples": samples, "forecasts": [], "recommended_column": None}})
+
+    forecasts = _forecast_columns(board, lookahead=lookahead, samples=samples)
+    recommended_column = forecasts[0]["column"] if forecasts else None
+    return jsonify(
+        {
+            "analysis": {
+                "lookahead": lookahead,
+                "samples": samples,
+                "forecasts": forecasts,
+                "recommended_column": recommended_column,
+            }
         }
     )
 

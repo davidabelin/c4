@@ -58,6 +58,31 @@ class C4Repository:
         row = rows.first()
         return dict(row) if row is not None else None
 
+    @staticmethod
+    def _normalize_training_selection(selection: str | None) -> str | None:
+        if selection is None:
+            return None
+        normalized = str(selection).strip().lower()
+        if not normalized or normalized == "unset":
+            return None
+        if normalized not in {"include", "exclude"}:
+            raise ValueError("selection must be one of: include, exclude, unset.")
+        return normalized
+
+    @staticmethod
+    def _normalize_selection_mode(selection_mode: str | None) -> str:
+        normalized = str(selection_mode or "all").strip().lower()
+        if normalized not in {"all", "selected"}:
+            raise ValueError("selection_mode must be one of: all, selected.")
+        return normalized
+
+    @staticmethod
+    def _normalize_actor_scope(actor_scope: str | None) -> str:
+        normalized = str(actor_scope or "algorithm").strip().lower()
+        if normalized not in {"algorithm", "human", "all"}:
+            raise ValueError("actor_scope must be one of: algorithm, human, all.")
+        return normalized
+
     def init_schema(self) -> None:
         """Create required tables/indexes for the active dialect."""
 
@@ -153,11 +178,22 @@ class C4Repository:
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS training_session_selections (
+                source_kind TEXT NOT NULL,
+                source_id INTEGER NOT NULL,
+                session_index INTEGER NOT NULL,
+                selection TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (source_kind, source_id, session_index)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_moves_game_session ON moves(game_id, session_index, move_index);
             CREATE INDEX IF NOT EXISTS idx_models_active ON models(is_active);
             CREATE INDEX IF NOT EXISTS idx_training_jobs_status ON training_jobs(status);
             CREATE INDEX IF NOT EXISTS idx_rl_jobs_status ON rl_jobs(status);
             CREATE INDEX IF NOT EXISTS idx_arena_matches_status ON arena_matches(status);
+            CREATE INDEX IF NOT EXISTS idx_training_session_selections_selection
+                ON training_session_selections(selection, source_kind, source_id, session_index);
         """
 
         postgres_schema = """
@@ -248,11 +284,22 @@ class C4Repository:
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS training_session_selections (
+                source_kind TEXT NOT NULL,
+                source_id BIGINT NOT NULL,
+                session_index INTEGER NOT NULL,
+                selection TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (source_kind, source_id, session_index)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_moves_game_session ON moves(game_id, session_index, move_index);
             CREATE INDEX IF NOT EXISTS idx_models_active ON models(is_active);
             CREATE INDEX IF NOT EXISTS idx_training_jobs_status ON training_jobs(status);
             CREATE INDEX IF NOT EXISTS idx_rl_jobs_status ON rl_jobs(status);
             CREATE INDEX IF NOT EXISTS idx_arena_matches_status ON arena_matches(status);
+            CREATE INDEX IF NOT EXISTS idx_training_session_selections_selection
+                ON training_session_selections(selection, source_kind, source_id, session_index);
         """
 
         with self._lock:
@@ -741,19 +788,303 @@ class C4Repository:
             rows = conn.execute(text(query), params).mappings().all()
         return [dict(row) for row in rows]
 
-    def list_ai_moves_for_training(self) -> list[dict]:
+    def _training_selection_lookup(self, conn) -> dict[tuple[str, int, int], str]:
+        rows = conn.execute(
+            text(
+                """
+                SELECT source_kind, source_id, session_index, selection
+                FROM training_session_selections
+                """
+            )
+        ).mappings().all()
+        return {
+            (str(row["source_kind"]), int(row["source_id"]), int(row["session_index"])): str(row["selection"])
+            for row in rows
+        }
+
+    @staticmethod
+    def _is_training_session_included(
+        selection_lookup: dict[tuple[str, int, int], str],
+        *,
+        source_kind: str,
+        source_id: int,
+        session_index: int,
+        selection_mode: str,
+    ) -> bool:
+        selection = selection_lookup.get((str(source_kind), int(source_id), int(session_index)))
+        if selection_mode == "selected":
+            return selection == "include"
+        return selection != "exclude"
+
+    @staticmethod
+    def _actor_allowed_for_scope(actor: str, actor_scope: str) -> bool:
+        actor_name = str(actor).strip().lower()
+        if actor_scope == "all":
+            return actor_name in {"player", "ai", "agent_a", "agent_b"}
+        if actor_scope == "human":
+            return actor_name == "player"
+        return actor_name in {"ai", "agent_a", "agent_b"}
+
+    def set_training_session_selection(
+        self,
+        *,
+        source_kind: str,
+        source_id: int,
+        session_index: int,
+        selection: str | None,
+    ) -> dict:
+        normalized = self._normalize_training_selection(selection)
+        source_kind_text = str(source_kind).strip().lower()
+        if source_kind_text not in {"game", "arena"}:
+            raise ValueError("source_kind must be one of: game, arena.")
+        source_id_value = int(source_id)
+        session_index_value = int(session_index)
+        now = utcnow_iso()
+        with self._lock:
+            with self.engine.begin() as conn:
+                conn.execute(
+                    text(
+                        """
+                        DELETE FROM training_session_selections
+                        WHERE source_kind = :source_kind
+                          AND source_id = :source_id
+                          AND session_index = :session_index
+                        """
+                    ),
+                    {
+                        "source_kind": source_kind_text,
+                        "source_id": source_id_value,
+                        "session_index": session_index_value,
+                    },
+                )
+                if normalized is not None:
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO training_session_selections
+                            (source_kind, source_id, session_index, selection, updated_at)
+                            VALUES (:source_kind, :source_id, :session_index, :selection, :updated_at)
+                            """
+                        ),
+                        {
+                            "source_kind": source_kind_text,
+                            "source_id": source_id_value,
+                            "session_index": session_index_value,
+                            "selection": normalized,
+                            "updated_at": now,
+                        },
+                    )
+        return {
+            "source_kind": source_kind_text,
+            "source_id": source_id_value,
+            "session_index": session_index_value,
+            "selection": normalized,
+        }
+
+    def list_training_sessions(self, limit: int = 200) -> list[dict]:
+        limit_value = max(1, int(limit))
         with self.engine.begin() as conn:
-            rows = conn.execute(
+            selection_lookup = self._training_selection_lookup(conn)
+            gameplay_rows = conn.execute(
+                text(
+                    """
+                    SELECT
+                        m.game_id AS source_id,
+                        m.session_index AS session_index,
+                        m.move_index AS move_index,
+                        m.actor AS actor,
+                        m.outcome AS outcome,
+                        m.created_at AS created_at,
+                        g.agent_name AS opponent_name
+                    FROM moves m
+                    JOIN games g ON g.id = m.game_id
+                    ORDER BY m.game_id ASC, m.session_index ASC, m.move_index ASC
+                    """
+                )
+            ).mappings().all()
+            arena_rows = conn.execute(
+                text(
+                    """
+                    SELECT
+                        id,
+                        status,
+                        winner,
+                        agent_a_name,
+                        agent_b_name,
+                        created_at,
+                        updated_at,
+                        trace_json
+                    FROM arena_matches
+                    WHERE trace_json IS NOT NULL
+                    ORDER BY updated_at DESC, id DESC
+                    """
+                )
+            ).mappings().all()
+
+        sessions: list[dict] = []
+        grouped_gameplay: dict[tuple[int, int], list[dict]] = {}
+        for row in gameplay_rows:
+            key = (int(row["source_id"]), int(row["session_index"]))
+            grouped_gameplay.setdefault(key, []).append(dict(row))
+
+        for (source_id, session_index), grouped_rows in grouped_gameplay.items():
+            human_moves = sum(1 for row in grouped_rows if str(row["actor"]) == "player")
+            algorithm_moves = sum(1 for row in grouped_rows if str(row["actor"]) == "ai")
+            final_outcome = str(grouped_rows[-1].get("outcome") or "")
+            status = "completed" if final_outcome in {"player", "ai", "tie"} else "active"
+            winner = final_outcome if status == "completed" else None
+            sessions.append(
+                {
+                    "source_kind": "game",
+                    "source_id": source_id,
+                    "session_index": session_index,
+                    "session_type": "human_vs_algorithm",
+                    "status": status,
+                    "winner": winner,
+                    "label": f"Game {source_id} / Session {session_index}",
+                    "matchup_label": f"Human vs {grouped_rows[0]['opponent_name']}",
+                    "opponent_name": grouped_rows[0]["opponent_name"],
+                    "human_moves": int(human_moves),
+                    "algorithm_moves": int(algorithm_moves),
+                    "total_moves": int(len(grouped_rows)),
+                    "started_at": grouped_rows[0]["created_at"],
+                    "updated_at": grouped_rows[-1]["created_at"],
+                    "selection": selection_lookup.get(("game", source_id, session_index)),
+                }
+            )
+
+        for row in arena_rows:
+            trace = json.loads(str(row["trace_json"])) if row.get("trace_json") else []
+            if not isinstance(trace, list) or not trace:
+                continue
+            source_id = int(row["id"])
+            session_index = 0
+            sessions.append(
+                {
+                    "source_kind": "arena",
+                    "source_id": source_id,
+                    "session_index": session_index,
+                    "session_type": "algorithm_vs_algorithm",
+                    "status": row["status"],
+                    "winner": row["winner"],
+                    "label": f"Arena Match {source_id}",
+                    "matchup_label": f"{row['agent_a_name']} vs {row['agent_b_name']}",
+                    "opponent_name": None,
+                    "agent_a_name": row["agent_a_name"],
+                    "agent_b_name": row["agent_b_name"],
+                    "human_moves": 0,
+                    "algorithm_moves": len(trace),
+                    "total_moves": len(trace),
+                    "started_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                    "selection": selection_lookup.get(("arena", source_id, session_index)),
+                }
+            )
+
+        sessions.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
+        return sessions[:limit_value]
+
+    def list_training_rows(
+        self,
+        *,
+        selection_mode: str = "all",
+        actor_scope: str = "algorithm",
+    ) -> list[dict]:
+        normalized_selection_mode = self._normalize_selection_mode(selection_mode)
+        normalized_actor_scope = self._normalize_actor_scope(actor_scope)
+
+        with self.engine.begin() as conn:
+            selection_lookup = self._training_selection_lookup(conn)
+            move_rows = conn.execute(
                 text(
                     """
                     SELECT game_id, session_index, move_index, actor, action, board_before_json, board_after_json, outcome, created_at
                     FROM moves
-                    WHERE actor = 'ai'
                     ORDER BY game_id ASC, session_index ASC, move_index ASC
                     """
                 )
             ).mappings().all()
-        return [dict(row) for row in rows]
+            arena_rows = conn.execute(
+                text(
+                    """
+                    SELECT id, created_at, updated_at, trace_json
+                    FROM arena_matches
+                    WHERE trace_json IS NOT NULL
+                    ORDER BY id ASC
+                    """
+                )
+            ).mappings().all()
+
+        rows: list[dict] = []
+        for row in move_rows:
+            source_id = int(row["game_id"])
+            session_index = int(row["session_index"])
+            if not self._is_training_session_included(
+                selection_lookup,
+                source_kind="game",
+                source_id=source_id,
+                session_index=session_index,
+                selection_mode=normalized_selection_mode,
+            ):
+                continue
+            if not self._actor_allowed_for_scope(str(row["actor"]), normalized_actor_scope):
+                continue
+            payload = dict(row)
+            payload["source_kind"] = "game"
+            payload["source_id"] = source_id
+            payload["actor_role"] = "human" if str(row["actor"]) == "player" else "algorithm"
+            rows.append(payload)
+
+        if normalized_actor_scope != "human":
+            for row in arena_rows:
+                source_id = int(row["id"])
+                session_index = 0
+                if not self._is_training_session_included(
+                    selection_lookup,
+                    source_kind="arena",
+                    source_id=source_id,
+                    session_index=session_index,
+                    selection_mode=normalized_selection_mode,
+                ):
+                    continue
+                trace = json.loads(str(row["trace_json"])) if row.get("trace_json") else []
+                if not isinstance(trace, list):
+                    continue
+                for frame in trace:
+                    rows.append(
+                        {
+                            "source_kind": "arena",
+                            "source_id": source_id,
+                            "game_id": source_id,
+                            "session_index": session_index,
+                            "move_index": int(frame["move_index"]),
+                            "actor": str(frame["actor"]),
+                            "actor_role": "algorithm",
+                            "action": int(frame["action"]),
+                            "board_before_json": json.dumps(frame["board_before"]),
+                            "board_after_json": json.dumps(frame["board_after"]),
+                            "outcome": frame.get("outcome"),
+                            "created_at": row["updated_at"] or row["created_at"],
+                        }
+                    )
+
+        rows.sort(
+            key=lambda item: (
+                str(item.get("source_kind") or "game"),
+                int(item.get("source_id", item.get("game_id", 0))),
+                int(item.get("session_index", 0)),
+                int(item.get("move_index", 0)),
+            )
+        )
+        return rows
+
+    def list_ai_moves_for_training(
+        self,
+        *,
+        selection_mode: str = "all",
+        actor_scope: str = "algorithm",
+    ) -> list[dict]:
+        return self.list_training_rows(selection_mode=selection_mode, actor_scope=actor_scope)
 
     def create_training_job(self, model_type: str, params: dict) -> dict:
         now = utcnow_iso()

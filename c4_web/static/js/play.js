@@ -9,6 +9,8 @@
   const openingPlayerSelect = document.getElementById("openingPlayerSelect");
   const timerSecondsInput = document.getElementById("timerSecondsInput");
   const undoModeSelect = document.getElementById("undoModeSelect");
+  const forecastToggleSelect = document.getElementById("forecastToggleSelect");
+  const forecastLookaheadInput = document.getElementById("forecastLookaheadInput");
   const newGameBtn = document.getElementById("newGameBtn");
   const undoBtn = document.getElementById("undoBtn");
   const resetBtn = document.getElementById("resetBtn");
@@ -21,6 +23,7 @@
   const tiesEl = document.getElementById("ties");
   const roundsEl = document.getElementById("rounds");
   const outcomeBanner = document.getElementById("outcomeBanner");
+  const forecastStatus = document.getElementById("forecastStatus");
   const moveLog = document.getElementById("moveLog");
 
   const rows = 6;
@@ -38,6 +41,8 @@
   let timerTick = null;
   let timerRemaining = 0;
   let undoUsed = false;
+  let forecastMap = {};
+  let forecastRecommendedColumn = null;
 
   function setStatus(text) {
     gameStatus.textContent = text;
@@ -205,7 +210,14 @@
       button.type = "button";
       button.className = "drop-btn";
       button.setAttribute("data-col", String(col));
-      button.textContent = `\u2193 ${col + 1}`;
+      const forecast = forecastMap[col];
+      if (forecastRecommendedColumn === col) {
+        button.classList.add("recommended");
+      }
+      button.innerHTML = `
+        <span class="drop-forecast">${forecast ? forecast.label : "--"}</span>
+        <span class="drop-label">\u2193 ${col + 1}</span>
+      `;
       button.addEventListener("click", () => {
         playMove(col);
       });
@@ -249,8 +261,65 @@
     currentBoard = nextBoard;
     updateScore(game);
     renderBoard();
+    buildColumnButtons();
     resetBtn.disabled = false;
     updateUndoButtonState();
+  }
+
+  function forecastEnabled() {
+    return String(forecastToggleSelect.value || "on") === "on";
+  }
+
+  function forecastLookahead() {
+    return clamp(parseNumber(forecastLookaheadInput.value, 4), 1, 10);
+  }
+
+  function clearForecasts(message) {
+    forecastMap = {};
+    forecastRecommendedColumn = null;
+    if (forecastStatus) {
+      forecastStatus.textContent = message || "Forecasts use a heuristic lookahead estimate.";
+    }
+    buildColumnButtons();
+  }
+
+  async function fetchForecasts() {
+    if (!currentGame || currentGame.status !== "active") {
+      clearForecasts("Forecasts available during active games.");
+      return;
+    }
+    if (!forecastEnabled()) {
+      clearForecasts("Forecasts hidden.");
+      return;
+    }
+    try {
+      forecastStatus.textContent = "Calculating column forecasts...";
+      const params = new URLSearchParams({
+        lookahead: String(forecastLookahead()),
+        samples: "12",
+      });
+      const response = await fetch(`${apiBase}/games/${currentGame.game_id}/analysis?${params.toString()}`);
+      const body = await safeJson(response);
+      if (!response.ok) {
+        forecastStatus.textContent = `Forecasts unavailable: ${body.error || "unknown error"}`;
+        return;
+      }
+      forecastMap = {};
+      const forecasts = Array.isArray(body.analysis.forecasts) ? body.analysis.forecasts : [];
+      forecasts.forEach((entry) => {
+        forecastMap[Number(entry.column)] = entry;
+      });
+      forecastRecommendedColumn = Number.isInteger(body.analysis.recommended_column)
+        ? Number(body.analysis.recommended_column)
+        : null;
+      forecastStatus.textContent = forecasts.length
+        ? `Forecasts show heuristic win estimates with ${body.analysis.lookahead}-ply lookahead.`
+        : "No forecast available for this position.";
+      buildColumnButtons();
+      setInteractive(!isBusy);
+    } catch (error) {
+      forecastStatus.textContent = `Forecasts unavailable: ${String(error)}`;
+    }
   }
 
   async function createGame() {
@@ -285,6 +354,7 @@
         setOutcome("Your move.");
       }
       setInteractive(true);
+      fetchForecasts().catch(() => null);
       startTurnTimer();
     } catch (error) {
       setStatus(`Failed to create game: ${String(error)}`);
@@ -350,12 +420,14 @@
       }
       if (body.game.status === "completed") {
         setStatus(`Game completed. ${text}`);
+        clearForecasts("Game complete. Start or reset to view forecasts again.");
         stopTurnTimer();
         setInteractive(true);
         return;
       }
       setStatus(`Played column ${col + 1}.`);
       setInteractive(true);
+      fetchForecasts().catch(() => null);
       startTurnTimer();
     } catch (error) {
       setStatus(`Move failed: ${String(error)}`);
@@ -397,6 +469,7 @@
       setOutcome("Board rewound one step.");
       setStatus("Undo complete.");
       setInteractive(true);
+      fetchForecasts().catch(() => null);
       if (currentGame.status === "active") {
         startTurnTimer();
       }
@@ -431,6 +504,7 @@
       setOutcome("Fresh board ready. Your move.");
       setStatus(`Game ${body.game.game_id} reset.`);
       setInteractive(true);
+      fetchForecasts().catch(() => null);
       startTurnTimer();
     } catch (error) {
       setStatus(`Reset failed: ${String(error)}`);
@@ -443,6 +517,18 @@
   undoBtn.addEventListener("click", undoLastTurn);
   resetBtn.addEventListener("click", resetGame);
   undoModeSelect.addEventListener("change", updateUndoButtonState);
+  forecastToggleSelect.addEventListener("change", () => {
+    if (forecastEnabled()) {
+      fetchForecasts().catch(() => null);
+    } else {
+      clearForecasts("Forecasts hidden.");
+    }
+  });
+  forecastLookaheadInput.addEventListener("change", () => {
+    if (forecastEnabled()) {
+      fetchForecasts().catch(() => null);
+    }
+  });
   timerSecondsInput.addEventListener("change", () => {
     if (currentGame && currentGame.status === "active" && !isBusy) {
       startTurnTimer();
@@ -451,6 +537,7 @@
 
   buildColumnButtons();
   renderBoard();
+  clearForecasts("Forecasts use a heuristic lookahead estimate.");
   setInteractive(true);
   updateDifficultyUi();
   fetchAgents()

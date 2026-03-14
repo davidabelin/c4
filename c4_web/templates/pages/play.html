@@ -66,6 +66,17 @@
               <option value="off">Off</option>
             </select>
           </label>
+          <label>
+            Column Forecasts
+            <select id="forecastToggleSelect">
+              <option value="on">Show Estimates</option>
+              <option value="off">Hide</option>
+            </select>
+          </label>
+          <label>
+            Forecast Lookahead
+            <input id="forecastLookaheadInput" type="number" min="1" max="10" value="4">
+          </label>
         </div>
       </details>
       <div class="controls-row play-actions">
@@ -85,7 +96,10 @@
           <h2>Board</h2>
           <p id="outcomeBanner" class="board-outcome">Start a game to begin.</p>
         </div>
-        <p class="board-tip">Use the arrows above the board to drop into a column.</p>
+        <div>
+          <p class="board-tip">Use the arrows above the board to drop into a column.</p>
+          <p id="forecastStatus" class="board-tip">Forecasts use a heuristic lookahead estimate.</p>
+        </div>
       </div>
       <div class="board-shell">
         <div id="columnButtons" class="board-controls"></div>

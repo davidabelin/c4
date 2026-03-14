@@ -4,13 +4,13 @@
 <section class="stack">
   <div class="panel">
     <h1>Supervised Training</h1>
-    <p>Train a model from recorded gameplay, register the artifact, and activate it for play or arena matches.</p>
+    <p>Train a model from curated Connect4 sessions, register the artifact, and activate it for play or arena matches.</p>
     <form id="trainForm" class="train-form">
       <label>
-        <span class="label-line">Model <span class="help-dot" title="Decision Tree is the fast baseline, MLP is the richer neural baseline, and Frequency is a lightweight context model.">i</span></span>
+        <span class="label-line">Model <span class="help-dot" title="Decision Tree is the fast baseline, NN is the richer neural baseline, and Frequency is a lightweight context model.">i</span></span>
         <select name="model_type">
           <option value="decision_tree">Decision Tree</option>
-          <option value="mlp">MLP</option>
+          <option value="mlp">Neural Network</option>
           <option value="frequency">Frequency Baseline</option>
         </select>
       </label>
@@ -20,33 +20,70 @@
         <input name="lookback" type="number" min="1" max="20" value="5">
       </label>
       <label>
-        <span class="label-line">Learning Rate <span class="help-dot" title="Used by MLP training only. Ignored by Decision Tree and Frequency.">i</span></span>
+        <span class="label-line">Session Scope <span class="help-dot" title="Train on every recorded session except excluded ones, or only the sessions you explicitly marked include.">i</span></span>
+        <select name="selection_mode" id="selectionModeSelect">
+          <option value="all">All Sessions Except Excluded</option>
+          <option value="selected">Included Sessions Only</option>
+        </select>
+      </label>
+      <label>
+        <span class="label-line">Move Source <span class="help-dot" title="Choose whether the training labels come from algorithm moves, human moves, or both.">i</span></span>
+        <select name="actor_scope" id="actorScopeSelect">
+          <option value="algorithm">Algorithms Only</option>
+          <option value="human">Humans Only</option>
+          <option value="all">Humans + Algorithms</option>
+        </select>
+      </label>
+      <label>
+        <span class="label-line">Learning Rate <span class="help-dot" title="Used by Neural Network training only. Ignored by Decision Tree and Frequency.">i</span></span>
         <input name="learning_rate" type="number" step="0.0001" value="0.001">
       </label>
       <label class="mlp-only">
-        <span class="label-line">Hidden Layer 1 (MLP) <span class="help-dot" title="Width of the first hidden layer for MLP.">i</span></span>
+        <span class="label-line">Hidden Layer 1 (NN) <span class="help-dot" title="Width of the first hidden layer for the neural network.">i</span></span>
         <input name="hidden_layer_1" type="number" min="1" step="1" value="64">
       </label>
       <label class="mlp-only">
-        <span class="label-line">Hidden Layer 2 (MLP) <span class="help-dot" title="Optional second hidden layer. Use 0 to disable it.">i</span></span>
+        <span class="label-line">Hidden Layer 2 (NN) <span class="help-dot" title="Optional second hidden layer. Use 0 to disable it.">i</span></span>
         <input name="hidden_layer_2" type="number" min="0" step="1" value="32">
       </label>
       <label class="mlp-only">
-        <span class="label-line">Batch Size (MLP) <span class="help-dot" title="Mini-batch size for MLP updates. Leave empty for auto.">i</span></span>
+        <span class="label-line">Batch Size (NN) <span class="help-dot" title="Mini-batch size for neural-network updates. Leave empty for auto.">i</span></span>
         <input name="batch_size" type="number" min="1" step="1" value="32" placeholder="Leave empty for auto">
       </label>
       <label class="mlp-only">
-        <span class="label-line">Epochs (MLP) <span class="help-dot" title="Maximum training passes for MLP.">i</span></span>
+        <span class="label-line">Epochs (NN) <span class="help-dot" title="Maximum training passes for the neural network.">i</span></span>
         <input name="epochs" type="number" min="10" step="10" value="200">
       </label>
       <button class="btn btn-primary" type="submit">Start Training Job</button>
     </form>
-    <p id="mlpHint" class="status">MLP-specific settings are shown only when MLP is selected.</p>
+    <p id="mlpHint" class="status">Neural-network settings are shown only when Neural Network is selected.</p>
     <details class="inline-details">
       <summary>How are "samples from moves" calculated?</summary>
-      <p id="sampleFormula" class="form-note">Each game session with <code>n</code> AI moves contributes <code>max(0, n - lookback)</code> samples.</p>
+      <p id="sampleFormula" class="form-note">Each included session with <code>n</code> matching moves contributes <code>max(0, n - lookback)</code> samples.</p>
     </details>
     <p id="readinessStatus" class="status">Checking training readiness...</p>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head compact">
+      <h2>Session Curation</h2>
+      <button id="refreshSessionsBtn" class="btn btn-secondary" type="button">Refresh Sessions</button>
+    </div>
+    <p class="status">Mark sessions to include or exclude. Arena matches and human-vs-algorithm games both feed this dataset view.</p>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Session</th>
+            <th>Mode</th>
+            <th>Moves</th>
+            <th>Selection</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="sessionTableBody"></tbody>
+      </table>
+    </div>
   </div>
 
   <div class="panel">

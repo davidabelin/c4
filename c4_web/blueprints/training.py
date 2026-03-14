@@ -35,6 +35,8 @@ def create_training_job():
     payload = request.get_json(silent=True) or {}
     payload.setdefault("model_type", "decision_tree")
     payload.setdefault("lookback", 5)
+    payload.setdefault("selection_mode", "all")
+    payload.setdefault("actor_scope", "algorithm")
     payload.setdefault("test_size", 0.2)
     payload.setdefault("learning_rate", 0.001)
     payload.setdefault("hidden_layer_sizes", [64, 32])
@@ -66,9 +68,37 @@ def run_training_job_internal(job_id: int):
 @training_bp.get("/training/readiness")
 def get_training_readiness():
     lookback = int(request.args.get("lookback", 5))
-    rows = _repo().list_ai_moves_for_training()
+    selection_mode = str(request.args.get("selection_mode", "all"))
+    actor_scope = str(request.args.get("actor_scope", "algorithm"))
+    rows = _repo().list_ai_moves_for_training(selection_mode=selection_mode, actor_scope=actor_scope)
     summary = training_readiness(rows=rows, lookback=lookback, minimum_samples=20)
+    summary["selection_mode"] = selection_mode
+    summary["actor_scope"] = actor_scope
     return jsonify({"readiness": summary})
+
+
+@training_bp.get("/training/sessions")
+def list_training_sessions():
+    limit = int(request.args.get("limit", 200))
+    sessions = _repo().list_training_sessions(limit=limit)
+    return jsonify({"sessions": sessions})
+
+
+@training_bp.post("/training/sessions/selection")
+def set_training_session_selection():
+    payload = request.get_json(silent=True) or {}
+    if "source_kind" not in payload or "source_id" not in payload or "session_index" not in payload:
+        return jsonify({"error": "source_kind, source_id, and session_index are required."}), 400
+    try:
+        selection = _repo().set_training_session_selection(
+            source_kind=str(payload["source_kind"]),
+            source_id=int(payload["source_id"]),
+            session_index=int(payload["session_index"]),
+            selection=payload.get("selection"),
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"session": selection})
 
 
 @training_bp.get("/training/jobs")

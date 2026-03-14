@@ -34,6 +34,8 @@ class TrainConfig:
 
     model_type: str = "decision_tree"
     lookback: int = 5
+    selection_mode: str = "all"
+    actor_scope: str = "algorithm"
     test_size: float = 0.2
     learning_rate: float = 0.001
     hidden_layer_sizes: tuple[int, ...] = (64, 32)
@@ -75,14 +77,18 @@ def _parse_board(raw: str | list[int]) -> list[int]:
 
 
 def build_dataset(rows: list[dict], lookback: int) -> tuple[np.ndarray, np.ndarray, list[tuple[int, ...]]]:
-    """Construct supervised features/labels from stored AI move rows."""
+    """Construct supervised features/labels from curated move rows."""
 
     if lookback <= 0:
         raise ValueError("lookback must be positive")
 
-    grouped: dict[tuple[int, int], list[dict]] = {}
+    grouped: dict[tuple[str, int, int], list[dict]] = {}
     for row in rows:
-        key = (int(row["game_id"]), int(row["session_index"]))
+        key = (
+            str(row.get("source_kind", "game")),
+            int(row.get("source_id", row["game_id"])),
+            int(row["session_index"]),
+        )
         grouped.setdefault(key, []).append(row)
 
     for key in grouped:
@@ -158,7 +164,11 @@ def training_readiness(rows: list[dict], lookback: int, minimum_samples: int = 2
     X, _, _ = build_dataset(rows, lookback=lookback)
     sample_count = int(len(X))
     session_keys = {
-        (int(row["game_id"]), int(row["session_index"]))
+        (
+            str(row.get("source_kind", "game")),
+            int(row.get("source_id", row["game_id"])),
+            int(row["session_index"]),
+        )
         for row in rows
         if "game_id" in row and "session_index" in row
     }
@@ -168,7 +178,7 @@ def training_readiness(rows: list[dict], lookback: int, minimum_samples: int = 2
         "lookback": int(lookback),
         "sample_count": sample_count,
         "minimum_required_samples": int(minimum_samples),
-        "sample_formula": "Each session with n AI moves contributes max(0, n - lookback) samples.",
+        "sample_formula": "Each included session with n matching moves contributes max(0, n - lookback) samples.",
         "can_train": sample_count >= minimum_samples,
         "sklearn_available": bool(SKLEARN_AVAILABLE),
         "sklearn_import_error": SKLEARN_IMPORT_ERROR,

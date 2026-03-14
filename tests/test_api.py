@@ -65,6 +65,18 @@ def test_create_move_and_reset_flow(client):
     assert reset.get_json()["game"]["rounds_played"] == 0
 
 
+def test_game_analysis_returns_column_forecasts(client):
+    game_id = _create_game(client, "alpha_beta_v9")
+    response = client.get(f"/api/v1/games/{game_id}/analysis?lookahead=4&samples=8")
+    assert response.status_code == 200
+    analysis = response.get_json()["analysis"]
+    assert analysis["lookahead"] == 4
+    assert analysis["samples"] == 8
+    assert len(analysis["forecasts"]) == 7
+    assert analysis["recommended_column"] in range(7)
+    assert all("win_estimate" in entry for entry in analysis["forecasts"])
+
+
 def test_agent_vs_agent_match_endpoint_returns_trace(client):
     response = client.post(
         "/api/v1/matches",
@@ -202,6 +214,87 @@ def test_training_job_lifecycle_and_model_activation(client):
     activate = client.post(f"/api/v1/models/{model_id}/activate")
     assert activate.status_code == 200
     assert activate.get_json()["model"]["is_active"] is True
+
+
+def test_training_session_curation_supports_gameplay_and_arena_filters(client):
+    game_id = _create_game(client, "alpha_beta_v9")
+    _play_game_until_complete(client, game_id, max_turns=18)
+
+    arena_create = client.post(
+        "/api/v1/arena/matches",
+        json={
+            "agent_a": "alpha_beta_v9",
+            "agent_b": "adaptive_midrange",
+            "starting_agent": "agent_a",
+            "seed": 3,
+        },
+    )
+    assert arena_create.status_code == 202
+    arena_match_id = int(arena_create.get_json()["match"]["id"])
+
+    arena_status = None
+    for _ in range(120):
+        arena_poll = client.get(f"/api/v1/arena/matches/{arena_match_id}")
+        assert arena_poll.status_code == 200
+        arena_status = arena_poll.get_json()["match"]["status"]
+        if arena_status in {"completed", "failed"}:
+            break
+        time.sleep(0.05)
+    assert arena_status == "completed"
+
+    sessions_response = client.get("/api/v1/training/sessions")
+    assert sessions_response.status_code == 200
+    sessions = sessions_response.get_json()["sessions"]
+    assert any(session["source_kind"] == "game" for session in sessions)
+    assert any(session["source_kind"] == "arena" for session in sessions)
+
+    game_session = next(session for session in sessions if session["source_kind"] == "game")
+    arena_session = next(session for session in sessions if session["source_kind"] == "arena")
+
+    include_game = client.post(
+        "/api/v1/training/sessions/selection",
+        json={
+            "source_kind": "game",
+            "source_id": game_session["source_id"],
+            "session_index": game_session["session_index"],
+            "selection": "include",
+        },
+    )
+    assert include_game.status_code == 200
+
+    include_arena = client.post(
+        "/api/v1/training/sessions/selection",
+        json={
+            "source_kind": "arena",
+            "source_id": arena_session["source_id"],
+            "session_index": arena_session["session_index"],
+            "selection": "include",
+        },
+    )
+    assert include_arena.status_code == 200
+
+    human_readiness = client.get("/api/v1/training/readiness?lookback=1&selection_mode=selected&actor_scope=human")
+    assert human_readiness.status_code == 200
+    human_info = human_readiness.get_json()["readiness"]
+    assert human_info["session_count"] == 1
+    assert human_info["total_move_rows"] >= 1
+
+    algorithm_readiness = client.get("/api/v1/training/readiness?lookback=1&selection_mode=selected&actor_scope=algorithm")
+    assert algorithm_readiness.status_code == 200
+    algorithm_info = algorithm_readiness.get_json()["readiness"]
+    assert algorithm_info["session_count"] == 2
+    assert algorithm_info["total_move_rows"] >= human_info["total_move_rows"]
+
+    reset_arena = client.post(
+        "/api/v1/training/sessions/selection",
+        json={
+            "source_kind": "arena",
+            "source_id": arena_session["source_id"],
+            "session_index": arena_session["session_index"],
+            "selection": None,
+        },
+    )
+    assert reset_arena.status_code == 200
 
 
 def test_rl_job_lifecycle_creates_model(client):

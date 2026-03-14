@@ -73,6 +73,8 @@ class TrainingJobManager:
         return TrainConfig(
             model_type=str(payload.get("model_type", "decision_tree")),
             lookback=int(payload.get("lookback", 5)),
+            selection_mode=str(payload.get("selection_mode", "all")),
+            actor_scope=str(payload.get("actor_scope", "algorithm")),
             test_size=float(payload.get("test_size", 0.2)),
             learning_rate=float(payload.get("learning_rate", 0.001)),
             hidden_layer_sizes=tuple(int(value) for value in hidden_layer_sizes),
@@ -127,7 +129,10 @@ class TrainingJobManager:
     def _run_job(self, job_id: int, config: TrainConfig) -> None:
         try:
             self.repository.update_training_job(job_id, status="running", progress=0.05)
-            rows = self.repository.list_ai_moves_for_training()
+            rows = self.repository.list_ai_moves_for_training(
+                selection_mode=config.selection_mode,
+                actor_scope=config.actor_scope,
+            )
             self.repository.update_training_job(job_id, progress=0.25)
             timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
             artifact_name = f"{config.model_type}_job{job_id}_{timestamp}.pkl"
