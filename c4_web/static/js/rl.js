@@ -25,8 +25,9 @@
   }
 
   function payloadFromForm(formData) {
+    const episodes = Math.max(10, Math.min(5000, Number(formData.get("episodes") || 300)));
     return {
-      episodes: Number(formData.get("episodes") || 300),
+      episodes,
       opponent: String(formData.get("opponent") || "alpha_beta_v9"),
       alpha: Number(formData.get("alpha") || 0.1),
       gamma: Number(formData.get("gamma") || 0.6),
@@ -36,7 +37,6 @@
       alpha_decay_step: Number(formData.get("alpha_decay_step") || 1000),
       alpha_decay_rate: Number(formData.get("alpha_decay_rate") || 0.9),
       switch_prob: Number(formData.get("switch_prob") || 0.5),
-      seed: Number(formData.get("seed") || 7),
     };
   }
 

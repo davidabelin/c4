@@ -16,7 +16,6 @@
   const mlpFields = Array.from(trainForm.querySelectorAll(".mlp-only"));
   const modelDescription = document.getElementById("modelDescription");
   const mlpHint = document.getElementById("mlpHint");
-  const sampleFormula = document.getElementById("sampleFormula");
   const readinessStatus = document.getElementById("readinessStatus");
   const sessionTableBody = document.getElementById("sessionTableBody");
   const refreshSessionsBtn = document.getElementById("refreshSessionsBtn");
@@ -121,17 +120,13 @@
       return;
     }
     const info = body.readiness;
-    let text = `Samples: ${info.sample_count} (minimum ${info.minimum_required_samples}) from ${info.total_move_rows} matching moves.`;
+    const sessionCount = Number(info.session_count || 0);
+    let text = `Samples: ${info.sample_count} (minimum ${info.minimum_required_samples}) from ${sessionCount} sessions.`;
     text += info.can_train ? " Ready to train." : " Need more matching moves.";
     if (!info.sklearn_available) {
       text += ` scikit-learn unavailable: ${info.sklearn_import_error || "import failed"}.`;
     }
     readinessStatus.textContent = text;
-    if (sampleFormula) {
-      const formula = info.sample_formula || "Each included session contributes one sample per matching move.";
-      const sessionPart = typeof info.session_count === "number" ? ` Sessions analyzed: ${info.session_count}.` : "";
-      sampleFormula.textContent = `${formula}${sessionPart}`;
-    }
   }
 
   function renderChart() {
@@ -200,6 +195,23 @@
     await Promise.all([fetchSessions(), fetchReadiness()]);
   }
 
+  async function deleteSession(sourceKind, sourceId, sessionIndex) {
+    const response = await fetch(`${apiBase}/training/sessions`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_kind: sourceKind,
+        source_id: sourceId,
+        session_index: sessionIndex,
+      }),
+    });
+    const body = await safeJson(response);
+    if (!response.ok) {
+      throw new Error(body.error || "Failed to delete session");
+    }
+    await Promise.all([fetchSessions(), fetchReadiness()]);
+  }
+
   async function fetchSessions() {
     const response = await fetch(`${apiBase}/training/sessions?limit=200`);
     const body = await safeJson(response);
@@ -228,6 +240,7 @@
             <button class="btn btn-secondary" type="button" data-selection="include">Include</button>
             <button class="btn btn-secondary" type="button" data-selection="exclude">Exclude</button>
             <button class="btn btn-secondary" type="button" data-selection="">Default</button>
+            <button class="btn btn-danger" type="button" data-action="delete">Delete</button>
           </div>
         </td>
       `;
@@ -248,6 +261,23 @@
           }
         });
       });
+      const deleteBtn = row.querySelector('button[data-action="delete"]');
+      if (deleteBtn) {
+        deleteBtn.addEventListener("click", async () => {
+          if (!window.confirm(`Delete ${session.label} from the curated training dataset?`)) {
+            return;
+          }
+          deleteBtn.disabled = true;
+          try {
+            await deleteSession(session.source_kind, Number(session.source_id), Number(session.session_index));
+            setStatus(`Deleted ${session.label}`);
+          } catch (error) {
+            setStatus(`Session delete failed: ${String(error)}`);
+          } finally {
+            deleteBtn.disabled = false;
+          }
+        });
+      }
       sessionTableBody.appendChild(row);
     });
   }

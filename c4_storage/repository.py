@@ -881,6 +881,102 @@ class C4Repository:
             "selection": normalized,
         }
 
+    def delete_training_session(
+        self,
+        *,
+        source_kind: str,
+        source_id: int,
+        session_index: int,
+    ) -> dict:
+        source_kind_text = str(source_kind).strip().lower()
+        if source_kind_text not in {"game", "arena"}:
+            raise ValueError("source_kind must be one of: game, arena.")
+
+        source_id_value = int(source_id)
+        session_index_value = int(session_index)
+        deleted_moves = 0
+
+        with self._lock:
+            with self.engine.begin() as conn:
+                conn.execute(
+                    text(
+                        """
+                        DELETE FROM training_session_selections
+                        WHERE source_kind = :source_kind
+                          AND source_id = :source_id
+                          AND session_index = :session_index
+                        """
+                    ),
+                    {
+                        "source_kind": source_kind_text,
+                        "source_id": source_id_value,
+                        "session_index": session_index_value,
+                    },
+                )
+
+                if source_kind_text == "game":
+                    game_row = self._first_or_none(
+                        conn.execute(
+                            text("SELECT id, status, session_index FROM games WHERE id = :id"),
+                            {"id": source_id_value},
+                        ).mappings()
+                    )
+                    if game_row is None:
+                        raise ValueError("Training session was not found.")
+                    if (
+                        str(game_row.get("status") or "").strip().lower() == "active"
+                        and int(game_row.get("session_index", -1)) == session_index_value
+                    ):
+                        raise ValueError("Cannot delete the active gameplay session. Finish or reset it first.")
+
+                    deleted_moves = int(
+                        conn.execute(
+                            text(
+                                """
+                                DELETE FROM moves
+                                WHERE game_id = :game_id
+                                  AND session_index = :session_index
+                                """
+                            ),
+                            {
+                                "game_id": source_id_value,
+                                "session_index": session_index_value,
+                            },
+                        ).rowcount
+                        or 0
+                    )
+                    if deleted_moves <= 0:
+                        raise ValueError("Training session was not found.")
+                else:
+                    match_row = self._first_or_none(
+                        conn.execute(
+                            text("SELECT id, status FROM arena_matches WHERE id = :id"),
+                            {"id": source_id_value},
+                        ).mappings()
+                    )
+                    if match_row is None:
+                        raise ValueError("Training session was not found.")
+                    if str(match_row.get("status") or "").strip().lower() in {"queued", "running"}:
+                        raise ValueError("Cannot delete an arena match while it is queued or running.")
+
+                    deleted_matches = int(
+                        conn.execute(
+                            text("DELETE FROM arena_matches WHERE id = :id"),
+                            {"id": source_id_value},
+                        ).rowcount
+                        or 0
+                    )
+                    if deleted_matches <= 0:
+                        raise ValueError("Training session was not found.")
+                    deleted_moves = deleted_matches
+
+        return {
+            "source_kind": source_kind_text,
+            "source_id": source_id_value,
+            "session_index": session_index_value,
+            "deleted_rows": deleted_moves,
+        }
+
     def list_training_sessions(self, limit: int = 200) -> list[dict]:
         limit_value = max(1, int(limit))
         with self.engine.begin() as conn:

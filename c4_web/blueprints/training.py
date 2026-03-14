@@ -101,6 +101,22 @@ def set_training_session_selection():
     return jsonify({"session": selection})
 
 
+@training_bp.delete("/training/sessions")
+def delete_training_session():
+    payload = request.get_json(silent=True) or {}
+    if "source_kind" not in payload or "source_id" not in payload or "session_index" not in payload:
+        return jsonify({"error": "source_kind, source_id, and session_index are required."}), 400
+    try:
+        deleted = _repo().delete_training_session(
+            source_kind=str(payload["source_kind"]),
+            source_id=int(payload["source_id"]),
+            session_index=int(payload["session_index"]),
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"deleted": deleted})
+
+
 @training_bp.get("/training/jobs")
 def list_training_jobs():
     jobs = _repo().list_training_jobs(limit=100)

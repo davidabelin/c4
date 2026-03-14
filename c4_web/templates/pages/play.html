@@ -75,7 +75,7 @@
           </label>
           <label>
             Forecast Lookahead
-            <input id="forecastLookaheadInput" type="number" min="1" max="10" value="4">
+            <input id="forecastLookaheadInput" type="number" min="1" max="6" value="4">
           </label>
         </div>
       </details>
@@ -90,20 +90,26 @@
       </div>
     </div>
 
-    <div class="panel board-panel">
-      <div class="board-panel-top">
-        <div>
-          <h2>Board</h2>
-          <p id="outcomeBanner" class="board-outcome">Start a game to begin.</p>
+    <div class="play-main-column">
+      <div class="panel board-panel">
+        <div class="board-panel-top">
+          <div>
+            <h2>Board</h2>
+            <p id="outcomeBanner" class="board-outcome">Start a game to begin.</p>
+          </div>
         </div>
-        <div>
-          <p class="board-tip">Use the arrows above the board to drop into a column.</p>
-          <p id="forecastStatus" class="board-tip">Forecasts use a heuristic lookahead estimate.</p>
+        <div class="board-shell">
+          <div id="columnButtons" class="board-controls"></div>
+          <div id="boardGrid" class="board-grid" aria-label="Connect4 board"></div>
         </div>
       </div>
-      <div class="board-shell">
-        <div id="columnButtons" class="board-controls"></div>
-        <div id="boardGrid" class="board-grid" aria-label="Connect4 board"></div>
+      <div class="panel board-notes-panel">
+        <div class="panel-head compact">
+          <h2>Notes</h2>
+          <p class="panel-note">Stable notes instead of shifting board-corner text.</p>
+        </div>
+        <p class="board-tip board-tip-left">Use the arrows above the board to drop into a column.</p>
+        <p id="forecastStatus" class="board-tip board-tip-left">Estimated likelihood choosing a column will result in a win for the player. These percentages do not sum to 100%.</p>
       </div>
     </div>
 

@@ -51,6 +51,17 @@
             <option value="250">Fast</option>
           </select>
         </label>
+        <label>
+          Column Estimates
+          <select id="arenaEstimateSelect" name="analysis_enabled">
+            <option value="on" selected>Show</option>
+            <option value="off">Hide</option>
+          </select>
+        </label>
+        <label>
+          Estimate Lookahead
+          <input id="arenaLookaheadInput" name="analysis_lookahead" type="number" min="1" max="6" value="4">
+        </label>
       </form>
       <div class="controls-row play-actions">
         <button id="startArenaBtn" class="btn btn-primary" type="submit" form="arenaForm">Start Match</button>
@@ -64,7 +75,7 @@
           <h2>Board</h2>
           <p id="arenaOutcomeBanner" class="board-outcome">Start a match to begin playback.</p>
         </div>
-        <p class="board-tip">Live frames arrive through the arena event stream.</p>
+        <p id="arenaForecastStatus" class="board-tip">Live frames arrive through the arena event stream.</p>
       </div>
       <div class="board-shell">
         <div id="spectatorColumnLabels" class="board-controls"></div>

@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from random import Random
 
 from c4_agents import ModelBackedAgent, build_heuristic_agent, list_agent_specs
+from c4_core.forecast import forecast_columns
 from c4_core.matches import play_agent_match
 from c4_core.types import Connect4Config
 from c4_storage.repository import C4Repository
@@ -66,6 +67,10 @@ class MatchJobManager:
         max_turns = int(raw_max_turns) if raw_max_turns is not None else int(self.config.rows) * int(self.config.columns)
         if max_turns <= 0 or max_turns > int(self.config.rows) * int(self.config.columns):
             raise ValueError("max_turns must be between 1 and 42.")
+        analysis_enabled = bool(payload.get("analysis_enabled", True))
+        raw_analysis_lookahead = payload.get("analysis_lookahead")
+        analysis_lookahead = int(raw_analysis_lookahead) if raw_analysis_lookahead is not None else 4
+        analysis_lookahead = max(1, min(6, analysis_lookahead))
         if starting_agent == "random":
             starting_agent = "agent_a" if Random(seed).random() < 0.5 else "agent_b"
         return {
@@ -74,6 +79,8 @@ class MatchJobManager:
             "starting_agent": starting_agent,
             "max_turns": max_turns,
             "seed": seed,
+            "analysis_enabled": analysis_enabled,
+            "analysis_lookahead": analysis_lookahead,
         }
 
     def _run_job(self, job_id: int, config: dict) -> None:
@@ -91,6 +98,8 @@ class MatchJobManager:
                     "starting_agent": config["starting_agent"],
                     "max_turns": max_turns,
                     "seed": config["seed"],
+                    "analysis_enabled": bool(config["analysis_enabled"]),
+                    "analysis_lookahead": int(config["analysis_lookahead"]),
                     "moves_played": 0,
                     "winner": None,
                     "status": "running",
@@ -102,7 +111,18 @@ class MatchJobManager:
             agent_b = _build_agent_from_name(self.repository, config["agent_b"])
 
             def _on_move(frame: dict) -> None:
-                trace.append(frame)
+                enriched = dict(frame)
+                if bool(config["analysis_enabled"]):
+                    forecasts = forecast_columns(
+                        list(frame["board_before"]),
+                        perspective_mark=int(frame["mark"]),
+                        lookahead=int(config["analysis_lookahead"]),
+                        config=self.config,
+                    )
+                    enriched["forecasts"] = forecasts
+                    enriched["recommended_column"] = forecasts[0]["column"] if forecasts else None
+                    enriched["analysis_lookahead"] = int(config["analysis_lookahead"])
+                trace.append(enriched)
                 self.repository.update_arena_match(
                     job_id,
                     status="running",
@@ -114,6 +134,8 @@ class MatchJobManager:
                         "starting_agent": config["starting_agent"],
                         "max_turns": max_turns,
                         "seed": config["seed"],
+                        "analysis_enabled": bool(config["analysis_enabled"]),
+                        "analysis_lookahead": int(config["analysis_lookahead"]),
                         "moves_played": len(trace),
                         "winner": None,
                         "status": "running",
@@ -139,7 +161,7 @@ class MatchJobManager:
                 progress=1.0,
                 winner=(str(match["winner"]) if match["winner"] is not None else None),
                 summary=summary,
-                trace=match["trace"],
+                trace=list(trace),
             )
         except Exception as exc:  # pragma: no cover
             self.repository.update_arena_match(

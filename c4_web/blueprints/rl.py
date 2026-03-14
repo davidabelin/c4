@@ -8,6 +8,7 @@ import time
 from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
 rl_bp = Blueprint("rl_api", __name__, url_prefix="/api/v1/rl")
+MAX_RL_EPISODES = 5000
 
 
 def _repo():
@@ -54,7 +55,14 @@ def rl_status():
 @rl_bp.post("/jobs")
 def create_rl_job():
     payload = request.get_json(silent=True) or {}
-    payload.setdefault("episodes", 300)
+    raw_episodes = payload.get("episodes", 300)
+    try:
+        episodes = int(raw_episodes)
+    except (TypeError, ValueError):
+        return jsonify({"error": "episodes must be an integer."}), 400
+    if episodes < 10 or episodes > MAX_RL_EPISODES:
+        return jsonify({"error": f"episodes must be between 10 and {MAX_RL_EPISODES}."}), 400
+    payload["episodes"] = episodes
     payload.setdefault("alpha", 0.1)
     payload.setdefault("gamma", 0.6)
     payload.setdefault("epsilon_start", 0.99)
@@ -64,7 +72,6 @@ def create_rl_job():
     payload.setdefault("alpha_decay_rate", 0.9)
     payload.setdefault("opponent", "alpha_beta_v9")
     payload.setdefault("switch_prob", 0.5)
-    payload.setdefault("seed", 7)
     job = _jobs().submit_job(payload)
     return jsonify({"job": _serialize(job)}), 202
 

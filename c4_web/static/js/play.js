@@ -313,14 +313,15 @@
   }
 
   function forecastLookahead() {
-    return clamp(parseNumber(forecastLookaheadInput.value, 4), 1, 10);
+    return clamp(parseNumber(forecastLookaheadInput.value, 4), 1, 6);
   }
 
   function clearForecasts(message) {
     forecastMap = {};
     forecastRecommendedColumn = null;
     if (forecastStatus) {
-      forecastStatus.textContent = message || "Forecasts use a heuristic lookahead estimate.";
+      forecastStatus.textContent =
+        message || "Estimated likelihood choosing a column will result in a win for the player. These percentages do not sum to 100%.";
     }
     buildColumnButtons();
   }
@@ -336,9 +337,7 @@
     }
     try {
       forecastStatus.textContent = "Calculating column forecasts...";
-      const params = new URLSearchParams({
-        lookahead: String(forecastLookahead()),
-      });
+      const params = new URLSearchParams({ lookahead: String(forecastLookahead()) });
       const response = await fetch(`${apiBase}/games/${currentGame.game_id}/analysis?${params.toString()}`);
       const body = await safeJson(response);
       if (!response.ok) {
@@ -354,7 +353,7 @@
         ? Number(body.analysis.recommended_column)
         : null;
       forecastStatus.textContent = forecasts.length
-        ? (body.analysis.note || `Each percent is an independent heuristic win estimate with ${body.analysis.lookahead}-ply lookahead.`)
+        ? (body.analysis.note || `Estimated likelihood choosing a column will result in a win for the player. ${body.analysis.lookahead}-ply lookahead.`)
         : "No forecast available for this position.";
       buildColumnButtons();
       setInteractive(!isBusy);
@@ -583,7 +582,7 @@
 
   buildColumnButtons();
   renderBoard();
-  clearForecasts("Forecasts use a heuristic lookahead estimate.");
+  clearForecasts("Estimated likelihood choosing a column will result in a win for the player. These percentages do not sum to 100%.");
   renderSessionScore();
   setInteractive(true);
   updateDifficultyUi();

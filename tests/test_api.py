@@ -111,6 +111,8 @@ def test_arena_match_job_lifecycle_persists_trace(client):
             "agent_b": "adaptive_midrange",
             "starting_agent": "agent_a",
             "seed": 7,
+            "analysis_enabled": True,
+            "analysis_lookahead": 2,
         },
     )
     assert create.status_code == 202
@@ -118,7 +120,7 @@ def test_arena_match_job_lifecycle_persists_trace(client):
 
     status = None
     trace = None
-    for _ in range(120):
+    for _ in range(240):
         poll = client.get(f"/api/v1/arena/matches/{match_id}")
         assert poll.status_code == 200
         match = poll.get_json()["match"]
@@ -132,6 +134,8 @@ def test_arena_match_job_lifecycle_persists_trace(client):
     assert trace is not None
     assert len(trace) >= 1
     assert trace[0]["actor"] == "agent_a"
+    assert "forecasts" in trace[0]
+    assert trace[0]["recommended_column"] in range(7)
 
 
 def test_ai_opening_and_undo_flow(client):
@@ -227,13 +231,14 @@ def test_training_session_curation_supports_gameplay_and_arena_filters(client):
             "agent_b": "adaptive_midrange",
             "starting_agent": "agent_a",
             "seed": 3,
+            "analysis_enabled": False,
         },
     )
     assert arena_create.status_code == 202
     arena_match_id = int(arena_create.get_json()["match"]["id"])
 
     arena_status = None
-    for _ in range(120):
+    for _ in range(240):
         arena_poll = client.get(f"/api/v1/arena/matches/{arena_match_id}")
         assert arena_poll.status_code == 200
         arena_status = arena_poll.get_json()["match"]["status"]
@@ -297,11 +302,39 @@ def test_training_session_curation_supports_gameplay_and_arena_filters(client):
     assert reset_arena.status_code == 200
 
 
+def test_training_session_delete_removes_game_session(client):
+    game_id = _create_game(client, "alpha_beta_v9")
+    _play_game_until_complete(client, game_id, max_turns=12)
+
+    sessions_response = client.get("/api/v1/training/sessions")
+    assert sessions_response.status_code == 200
+    game_session = next(session for session in sessions_response.get_json()["sessions"] if session["source_kind"] == "game")
+
+    delete_response = client.delete(
+        "/api/v1/training/sessions",
+        json={
+            "source_kind": "game",
+            "source_id": game_session["source_id"],
+            "session_index": game_session["session_index"],
+        },
+    )
+    assert delete_response.status_code == 200
+
+    sessions_after = client.get("/api/v1/training/sessions")
+    remaining = sessions_after.get_json()["sessions"]
+    assert not any(
+        session["source_kind"] == "game"
+        and int(session["source_id"]) == int(game_session["source_id"])
+        and int(session["session_index"]) == int(game_session["session_index"])
+        for session in remaining
+    )
+
+
 def test_rl_job_lifecycle_creates_model(client):
     create_job = client.post(
         "/api/v1/rl/jobs",
         json={
-            "episodes": 3,
+            "episodes": 10,
             "opponent": "random",
             "seed": 5,
         },
@@ -318,3 +351,15 @@ def test_rl_job_lifecycle_creates_model(client):
             break
         time.sleep(0.1)
     assert status == "completed"
+
+
+def test_rl_job_rejects_episode_count_above_limit(client):
+    response = client.post(
+        "/api/v1/rl/jobs",
+        json={
+            "episodes": 5001,
+            "opponent": "random",
+        },
+    )
+    assert response.status_code == 400
+    assert "episodes must be between 10 and 5000" in response.get_json()["error"]

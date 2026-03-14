@@ -11,11 +11,14 @@
   const agentBSelect = document.getElementById("agentBSelect");
   const startingAgentSelect = document.getElementById("startingAgentSelect");
   const arenaSpeedSelect = document.getElementById("arenaSpeedSelect");
+  const arenaEstimateSelect = document.getElementById("arenaEstimateSelect");
+  const arenaLookaheadInput = document.getElementById("arenaLookaheadInput");
   const startArenaBtn = document.getElementById("startArenaBtn");
   const pauseArenaBtn = document.getElementById("pauseArenaBtn");
   const arenaStatus = document.getElementById("arenaStatus");
   const arenaPlaybackStatus = document.getElementById("arenaPlaybackStatus");
   const arenaOutcomeBanner = document.getElementById("arenaOutcomeBanner");
+  const arenaForecastStatus = document.getElementById("arenaForecastStatus");
   const arenaProgress = document.getElementById("arenaProgress");
   const arenaMovesShown = document.getElementById("arenaMovesShown");
   const arenaWinner = document.getElementById("arenaWinner");
@@ -34,6 +37,7 @@
   let paused = false;
   let eventSource = null;
   let recentCellIndices = new Set();
+  let currentFrame = null;
 
   function setStatus(text) {
     arenaStatus.textContent = text;
@@ -72,15 +76,45 @@
     }
   }
 
-  function buildColumnLabels() {
+  function estimatesEnabled() {
+    return String(arenaEstimateSelect.value || "on") === "on";
+  }
+
+  function buildColumnLabels(frame) {
+    const forecastLookup = {};
+    const recommendedColumn = frame && Number.isInteger(frame.recommended_column) ? Number(frame.recommended_column) : null;
+    const chosenColumn = frame && Number.isInteger(frame.action) ? Number(frame.action) : null;
+    if (frame && Array.isArray(frame.forecasts)) {
+      frame.forecasts.forEach((entry) => {
+        forecastLookup[Number(entry.column)] = entry;
+      });
+    }
     spectatorColumnLabels.innerHTML = "";
     for (let col = 0; col < cols; col += 1) {
       const label = document.createElement("button");
       label.type = "button";
       label.className = "drop-btn";
       label.disabled = true;
-      label.textContent = `${col + 1}`;
+      if (recommendedColumn === col) {
+        label.classList.add("recommended");
+      }
+      if (chosenColumn === col) {
+        label.classList.add("chosen");
+      }
+      const forecast = estimatesEnabled() ? forecastLookup[col] : null;
+      label.innerHTML = `
+        <span class="drop-forecast">${forecast ? forecast.label : "--"}</span>
+        <span class="drop-label">${col + 1}</span>
+      `;
       spectatorColumnLabels.appendChild(label);
+    }
+    if (chosenColumn !== null && chosenColumn >= 0 && chosenColumn < spectatorColumnLabels.children.length) {
+      const chosenLabel = spectatorColumnLabels.children[chosenColumn];
+      chosenLabel.classList.add("flash-choice");
+      window.setTimeout(
+        () => chosenLabel.classList.remove("flash-choice"),
+        Math.max(180, Number(arenaSpeedSelect.value || 550) * 0.72)
+      );
     }
   }
 
@@ -90,13 +124,18 @@
     currentMatchId = null;
     renderedCount = 0;
     recentCellIndices = new Set();
+    currentFrame = null;
     moveLog.innerHTML = "";
     arenaMovesShown.textContent = "0";
     arenaWinner.textContent = "-";
     arenaMatchId.textContent = "-";
     arenaOutcomeBanner.textContent = "Start a match to begin playback.";
+    if (arenaForecastStatus) {
+      arenaForecastStatus.textContent = "Live frames arrive through the arena event stream.";
+    }
     setProgress(0);
     renderBoard();
+    buildColumnLabels(null);
   }
 
   function stopPlaybackTimer() {
@@ -140,6 +179,7 @@
   }
 
   function renderFrame(frame) {
+    currentFrame = frame;
     const nextBoard = Array.isArray(frame.board_after) ? frame.board_after.slice() : currentBoard.slice();
     recentCellIndices = new Set();
     for (let index = 0; index < nextBoard.length; index += 1) {
@@ -151,8 +191,19 @@
     }
     currentBoard = nextBoard;
     renderBoard();
+    buildColumnLabels(frame);
     arenaMovesShown.textContent = String(frame.move_index + 1);
     arenaOutcomeBanner.textContent = `Move ${frame.move_index + 1}: ${frame.actor} dropped in column ${Number(frame.action) + 1}.`;
+    if (arenaForecastStatus) {
+      if (!estimatesEnabled()) {
+        arenaForecastStatus.textContent = "Column estimates hidden for replay.";
+      } else if (Array.isArray(frame.forecasts) && frame.forecasts.length) {
+        arenaForecastStatus.textContent =
+          `Estimated likelihood choosing a column will result in a win for ${frame.actor === "agent_a" ? "Agent A" : "Agent B"} before this move. ${frame.analysis_lookahead || 4}-ply lookahead.`;
+      } else {
+        arenaForecastStatus.textContent = "No column estimates were recorded for this match.";
+      }
+    }
     const item = document.createElement("li");
     item.textContent = `Move ${frame.move_index + 1} | ${frame.actor} -> column ${Number(frame.action) + 1} | ${frame.outcome}`;
     moveLog.prepend(item);
@@ -265,6 +316,8 @@
       agent_a: String(agentASelect.value || ""),
       agent_b: String(agentBSelect.value || ""),
       starting_agent: String(startingAgentSelect.value || "agent_a"),
+      analysis_enabled: estimatesEnabled(),
+      analysis_lookahead: Number(arenaLookaheadInput.value || 4),
     };
     const response = await fetch(`${apiBase}/arena/matches`, {
       method: "POST",
@@ -300,7 +353,19 @@
     fetchMatches().catch((error) => setStatus(`Failed to refresh matches: ${String(error)}`));
   });
 
-  buildColumnLabels();
+  arenaEstimateSelect.addEventListener("change", () => {
+    buildColumnLabels(currentFrame);
+    if (!estimatesEnabled() && arenaForecastStatus) {
+      arenaForecastStatus.textContent = "Column estimates hidden for replay.";
+    }
+  });
+
+  arenaLookaheadInput.addEventListener("change", () => {
+    const bounded = Math.max(1, Math.min(6, Number(arenaLookaheadInput.value || 4)));
+    arenaLookaheadInput.value = String(bounded);
+  });
+
+  buildColumnLabels(null);
   renderBoard();
   fetchAgents()
     .then(fetchMatches)
