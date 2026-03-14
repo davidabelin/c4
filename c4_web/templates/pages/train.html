@@ -4,11 +4,84 @@
 <section class="stack">
   <div class="panel">
     <h1>Supervised Training</h1>
-    <p>Training scaffolding is active through <code>/api/v1/training/*</code> and <code>/api/v1/models</code>.</p>
-    <p class="status">
-      Next phase: add the same web controls and model activation workflow used in RPS.
-    </p>
+    <p>Train a model from recorded gameplay, register the artifact, and activate it for play or arena matches.</p>
+    <form id="trainForm" class="train-form">
+      <label>
+        <span class="label-line">Model <span class="help-dot" title="Decision Tree is the fast baseline, MLP is the richer neural baseline, and Frequency is a lightweight context model.">i</span></span>
+        <select name="model_type">
+          <option value="decision_tree">Decision Tree</option>
+          <option value="mlp">MLP</option>
+          <option value="frequency">Frequency Baseline</option>
+        </select>
+      </label>
+      <p id="modelDescription" class="form-note">Decision Tree: quick baseline for tabular board and action-history patterns.</p>
+      <label>
+        <span class="label-line">Lookback <span class="help-dot" title="How many previous move decisions are encoded into one training sample.">i</span></span>
+        <input name="lookback" type="number" min="1" max="20" value="5">
+      </label>
+      <label>
+        <span class="label-line">Learning Rate <span class="help-dot" title="Used by MLP training only. Ignored by Decision Tree and Frequency.">i</span></span>
+        <input name="learning_rate" type="number" step="0.0001" value="0.001">
+      </label>
+      <label class="mlp-only">
+        <span class="label-line">Hidden Layer 1 (MLP) <span class="help-dot" title="Width of the first hidden layer for MLP.">i</span></span>
+        <input name="hidden_layer_1" type="number" min="1" step="1" value="64">
+      </label>
+      <label class="mlp-only">
+        <span class="label-line">Hidden Layer 2 (MLP) <span class="help-dot" title="Optional second hidden layer. Use 0 to disable it.">i</span></span>
+        <input name="hidden_layer_2" type="number" min="0" step="1" value="32">
+      </label>
+      <label class="mlp-only">
+        <span class="label-line">Batch Size (MLP) <span class="help-dot" title="Mini-batch size for MLP updates. Leave empty for auto.">i</span></span>
+        <input name="batch_size" type="number" min="1" step="1" value="32" placeholder="Leave empty for auto">
+      </label>
+      <label class="mlp-only">
+        <span class="label-line">Epochs (MLP) <span class="help-dot" title="Maximum training passes for MLP.">i</span></span>
+        <input name="epochs" type="number" min="10" step="10" value="200">
+      </label>
+      <button class="btn btn-primary" type="submit">Start Training Job</button>
+    </form>
+    <p id="mlpHint" class="status">MLP-specific settings are shown only when MLP is selected.</p>
+    <details class="inline-details">
+      <summary>How are "samples from moves" calculated?</summary>
+      <p id="sampleFormula" class="form-note">Each game session with <code>n</code> AI moves contributes <code>max(0, n - lookback)</code> samples.</p>
+    </details>
+    <p id="readinessStatus" class="status">Checking training readiness...</p>
+  </div>
+
+  <div class="panel">
+    <h2>Job Status</h2>
+    <p id="jobStatus">No active training job.</p>
+    <div class="meter">
+      <div id="jobProgress" class="meter-fill"></div>
+    </div>
+    <svg id="jobChart" class="job-chart" viewBox="0 0 300 90" role="img" aria-label="Training progress chart">
+      <polyline id="jobChartLine" fill="none" stroke="currentColor" stroke-width="3" points=""></polyline>
+    </svg>
+    <pre id="jobMetrics" class="metrics">No metrics yet.</pre>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head compact">
+      <h2>Model Registry</h2>
+      <button id="refreshModelsBtn" class="btn btn-secondary" type="button">Refresh Models</button>
+    </div>
+    <p class="status">Activate a model here, then choose <code>active_model</code> on Play or Arena.</p>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Test Accuracy</th>
+          <th>Active</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="modelTableBody"></tbody>
+    </table>
   </div>
 </section>
+
 <script src="{{ url_for('static', filename='js/train.js') }}"></script>
 {% endblock %}
