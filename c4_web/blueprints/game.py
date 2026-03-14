@@ -202,20 +202,19 @@ def _simulate_guided_outcome(
     next_mark: int,
     perspective_mark: int,
     lookahead: int,
-    sample_index: int,
 ) -> float:
     working = list(board)
     current_mark = int(next_mark)
-    seed_value = 1009 + sample_index * 131 + lookahead * 17 + sum((idx + 1) * int(value) for idx, value in enumerate(board))
+    seed_value = 1009 + lookahead * 17 + sum((idx + 1) * int(value) for idx, value in enumerate(board))
     saved_state = pyrandom.getstate()
     pyrandom.seed(seed_value)
     try:
-        for _ in range(max(0, int(lookahead))):
+        agent = build_heuristic_agent("alpha_beta_v9")
+        for ply in range(max(0, int(lookahead))):
             terminal = _terminal_outcome_for_board(working)
             if terminal is not None:
                 return _outcome_to_probability(terminal, perspective_mark)
-            agent = build_heuristic_agent("alpha_beta_v9")
-            action = select_ai_action(agent, working, config=_config(), mark=current_mark, rng=Random(seed_value))
+            action = select_ai_action(agent, working, config=_config(), mark=current_mark, rng=Random(seed_value + ply))
             next_grid = drop_piece(board_to_grid(working, _config()), action, mark=current_mark, config=_config())
             working = next_grid.reshape(-1).astype(int).tolist()
             current_mark = 1 if current_mark == 2 else 2
@@ -228,7 +227,7 @@ def _simulate_guided_outcome(
     return _heuristic_probability(working, perspective_mark)
 
 
-def _forecast_columns(board: list[int], lookahead: int, samples: int) -> list[dict]:
+def _forecast_columns(board: list[int], lookahead: int) -> list[dict]:
     forecasts: list[dict] = []
     config = _config()
     for column in valid_columns(board, config):
@@ -238,17 +237,12 @@ def _forecast_columns(board: list[int], lookahead: int, samples: int) -> list[di
         if immediate is not None:
             win_estimate = _outcome_to_probability(immediate, 1)
         else:
-            estimates = [
-                _simulate_guided_outcome(
-                    board_after_player,
-                    next_mark=2,
-                    perspective_mark=1,
-                    lookahead=max(0, int(lookahead) - 1),
-                    sample_index=sample_index,
-                )
-                for sample_index in range(max(1, int(samples)))
-            ]
-            win_estimate = float(sum(estimates) / len(estimates))
+            win_estimate = _simulate_guided_outcome(
+                board_after_player,
+                next_mark=2,
+                perspective_mark=1,
+                lookahead=max(0, int(lookahead) - 1),
+            )
         forecasts.append(
             {
                 "column": int(column),
@@ -428,23 +422,39 @@ def analyze_game(game_id: int):
 
     board = _decode_board(game.get("current_board_json", "[]"))
     lookahead = max(1, min(10, int(request.args.get("lookahead", 4))))
-    samples = max(4, min(32, int(request.args.get("samples", 12))))
+    requested_samples = max(1, min(32, int(request.args.get("samples", 1))))
 
     if str(game.get("status")) != "active":
-        return jsonify({"analysis": {"lookahead": lookahead, "samples": samples, "forecasts": [], "recommended_column": None}})
-
-    forecasts = _forecast_columns(board, lookahead=lookahead, samples=samples)
-    recommended_column = forecasts[0]["column"] if forecasts else None
-    return jsonify(
-        {
-            "analysis": {
-                "lookahead": lookahead,
-                "samples": samples,
-                "forecasts": forecasts,
-                "recommended_column": recommended_column,
+        return jsonify(
+            {
+                "analysis": {
+                    "lookahead": lookahead,
+                    "samples": requested_samples,
+                    "forecasts": [],
+                    "recommended_column": None,
+                    "note": "Forecasts are available only during active games.",
+                    "measure": "independent_win_estimate",
+                }
             }
-        }
-    )
+        )
+
+    try:
+        forecasts = _forecast_columns(board, lookahead=lookahead)
+        recommended_column = forecasts[0]["column"] if forecasts else None
+        return jsonify(
+            {
+                "analysis": {
+                    "lookahead": lookahead,
+                    "samples": requested_samples,
+                    "forecasts": forecasts,
+                    "recommended_column": recommended_column,
+                    "note": "Each percent is an independent heuristic win estimate for choosing that column. The values are not normalized and do not sum to 100%.",
+                    "measure": "independent_win_estimate",
+                }
+            }
+        )
+    except Exception as exc:
+        return jsonify({"error": f"analysis_failed: {exc}"}), 500
 
 
 @game_bp.post("/games/<int:game_id>/reset")

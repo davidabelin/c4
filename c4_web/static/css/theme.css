@@ -115,16 +115,18 @@ h2 {
 }
 
 h1 {
-  font-size: clamp(1.3rem, 4vw, 2.15rem);
+  font-size: clamp(1.18rem, 3.3vw, 1.88rem);
 }
 
 h2 {
-  font-size: clamp(1rem, 2.4vw, 1.28rem);
+  font-size: clamp(0.96rem, 2vw, 1.12rem);
 }
 
 .lede {
   max-width: 66ch;
   color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .grid {
@@ -149,7 +151,7 @@ h2 {
 .controls-grid label {
   display: grid;
   gap: 0.3rem;
-  font-size: 0.86rem;
+  font-size: 0.82rem;
 }
 
 .controls-row {
@@ -169,6 +171,7 @@ h2 {
   width: 100%;
   min-height: 38px;
   line-height: 1.2;
+  font-size: 0.84rem;
 }
 
 .is-hidden {
@@ -219,6 +222,8 @@ code {
 
 .status {
   color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
 }
 
 .play-stack {
@@ -235,7 +240,7 @@ code {
 .hero-status {
   display: grid;
   gap: 0.6rem;
-  width: min(255px, 100%);
+  width: min(235px, 100%);
 }
 
 .status-card {
@@ -253,7 +258,7 @@ code {
   display: inline-block;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: 0.72rem;
+  font-size: 0.64rem;
   color: var(--accent);
 }
 
@@ -271,12 +276,13 @@ code {
 .panel-note {
   margin: 0;
   color: var(--muted);
-  font-size: 0.84rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .play-layout {
   display: grid;
-  grid-template-columns: minmax(215px, 245px) minmax(0, 1fr) minmax(205px, 235px);
+  grid-template-columns: minmax(198px, 228px) minmax(0, 1fr) minmax(188px, 214px);
   align-items: start;
   gap: 0.8rem;
 }
@@ -381,7 +387,7 @@ code {
 
 .board-outcome {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--ink);
 }
@@ -390,7 +396,7 @@ code {
   margin: 0;
   max-width: 24ch;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.74rem;
   text-align: right;
 }
 
@@ -411,7 +417,7 @@ code {
   border: 0;
   border-radius: 10px;
   font: inherit;
-  font-weight: 700;
+  font-weight: 600;
   color: #fff;
   background: linear-gradient(180deg, #9873df, #6b46bc);
   padding: 0.34rem 0.15rem;
@@ -440,12 +446,12 @@ code {
 }
 
 .drop-forecast {
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   line-height: 1;
 }
 
 .drop-label {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   line-height: 1.1;
 }
 
@@ -585,12 +591,12 @@ code {
 .score-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.7rem;
+  gap: 0.5rem;
 }
 
 .score-card {
-  border-radius: 16px;
-  padding: 0.85rem 0.9rem;
+  border-radius: 12px;
+  padding: 0.64rem 0.68rem;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 240, 255, 0.95));
   border: 1px solid rgba(126, 82, 201, 0.12);
   display: grid;
@@ -598,8 +604,10 @@ code {
 }
 
 .score-card strong {
-  font-size: clamp(1.45rem, 3vw, 2rem);
+  font-size: clamp(1rem, 2.2vw, 1.34rem);
   font-weight: 700;
+  line-height: 1.08;
+  overflow-wrap: anywhere;
 }
 
 .score-card-wide {
@@ -608,15 +616,15 @@ code {
 
 .score-label {
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .meter {
-  margin-top: 0.75rem;
+  margin-top: 0.55rem;
   width: 100%;
-  height: 0.9rem;
+  height: 0.72rem;
   border-radius: 999px;
   background: rgba(126, 82, 201, 0.12);
   overflow: hidden;
@@ -630,12 +638,12 @@ code {
 }
 
 .metrics {
-  margin: 0.8rem 0 0;
-  border-radius: 14px;
+  margin: 0.65rem 0 0;
+  border-radius: 12px;
   border: 1px solid rgba(126, 82, 201, 0.12);
   background: rgba(248, 242, 255, 0.72);
-  padding: 0.85rem;
-  font-size: 0.88rem;
+  padding: 0.65rem;
+  font-size: 0.8rem;
   line-height: 1.4;
   overflow: auto;
 }
@@ -647,13 +655,13 @@ code {
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.92rem;
+  font-size: 0.84rem;
 }
 
 .data-table th,
 .data-table td {
   text-align: left;
-  padding: 0.62rem 0.4rem;
+  padding: 0.5rem 0.35rem;
   border-bottom: 1px solid rgba(126, 82, 201, 0.12);
 }
 
@@ -678,7 +686,7 @@ code {
 
 @media (max-width: 1080px) {
   .play-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
+    grid-template-columns: minmax(0, 1fr) minmax(210px, 240px);
   }
 
   .play-setup-panel {

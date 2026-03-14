@@ -101,20 +101,12 @@ def build_dataset(rows: list[dict], lookback: int) -> tuple[np.ndarray, np.ndarr
     for _key, seq in grouped.items():
         actions = [int(item["action"]) for item in seq]
         for idx in range(len(seq)):
-            if idx < lookback:
-                continue
             current = seq[idx]
             board = _parse_board(current["board_before_json"])
             if len(board) != 42:
                 continue
-            history = actions[idx - lookback : idx]
-            features = [float(v) for v in board]
-            # Append one-hot encoded action history.
-            for action in history:
-                one_hot = [0.0] * 7
-                if 0 <= int(action) < 7:
-                    one_hot[int(action)] = 1.0
-                features.extend(one_hot)
+            history = actions[max(0, idx - lookback) : idx]
+            features = _feature_vector(board, history, lookback=lookback).tolist()
             X.append(features)
             y.append(int(current["action"]))
             contexts.append(tuple(int(v) for v in board[:7]))
@@ -178,7 +170,7 @@ def training_readiness(rows: list[dict], lookback: int, minimum_samples: int = 2
         "lookback": int(lookback),
         "sample_count": sample_count,
         "minimum_required_samples": int(minimum_samples),
-        "sample_formula": "Each included session with n matching moves contributes max(0, n - lookback) samples.",
+        "sample_formula": "Each included session with n matching moves contributes n samples. Early moves use the available history and left-pad the rest of the context window.",
         "can_train": sample_count >= minimum_samples,
         "sklearn_available": bool(SKLEARN_AVAILABLE),
         "sklearn_import_error": SKLEARN_IMPORT_ERROR,

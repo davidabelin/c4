@@ -338,12 +338,11 @@
       forecastStatus.textContent = "Calculating column forecasts...";
       const params = new URLSearchParams({
         lookahead: String(forecastLookahead()),
-        samples: "12",
       });
       const response = await fetch(`${apiBase}/games/${currentGame.game_id}/analysis?${params.toString()}`);
       const body = await safeJson(response);
       if (!response.ok) {
-        forecastStatus.textContent = `Forecasts unavailable: ${body.error || "unknown error"}`;
+        forecastStatus.textContent = `Forecasts unavailable: ${body.error || `request failed (${response.status})`}`;
         return;
       }
       forecastMap = {};
@@ -355,12 +354,13 @@
         ? Number(body.analysis.recommended_column)
         : null;
       forecastStatus.textContent = forecasts.length
-        ? `Forecasts show heuristic win estimates with ${body.analysis.lookahead}-ply lookahead.`
+        ? (body.analysis.note || `Each percent is an independent heuristic win estimate with ${body.analysis.lookahead}-ply lookahead.`)
         : "No forecast available for this position.";
       buildColumnButtons();
       setInteractive(!isBusy);
     } catch (error) {
-      forecastStatus.textContent = `Forecasts unavailable: ${String(error)}`;
+      const message = error && error.name === "AbortError" ? "request timed out" : String(error);
+      forecastStatus.textContent = `Forecasts unavailable: ${message}`;
     }
   }
 

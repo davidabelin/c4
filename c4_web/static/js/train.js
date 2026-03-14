@@ -121,14 +121,14 @@
       return;
     }
     const info = body.readiness;
-    let text = `Samples: ${info.sample_count} (minimum ${info.minimum_required_samples}) from ${info.total_move_rows} moves.`;
+    let text = `Samples: ${info.sample_count} (minimum ${info.minimum_required_samples}) from ${info.total_move_rows} matching moves.`;
     text += info.can_train ? " Ready to train." : " Need more matching moves.";
     if (!info.sklearn_available) {
       text += ` scikit-learn unavailable: ${info.sklearn_import_error || "import failed"}.`;
     }
     readinessStatus.textContent = text;
     if (sampleFormula) {
-      const formula = info.sample_formula || "Each included session contributes max(0, moves - lookback) samples.";
+      const formula = info.sample_formula || "Each included session contributes one sample per matching move.";
       const sessionPart = typeof info.session_count === "number" ? ` Sessions analyzed: ${info.session_count}.` : "";
       sampleFormula.textContent = `${formula}${sessionPart}`;
     }

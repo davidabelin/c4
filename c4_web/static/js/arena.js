@@ -10,7 +10,6 @@
   const agentASelect = document.getElementById("agentASelect");
   const agentBSelect = document.getElementById("agentBSelect");
   const startingAgentSelect = document.getElementById("startingAgentSelect");
-  const arenaSeedInput = document.getElementById("arenaSeedInput");
   const arenaSpeedSelect = document.getElementById("arenaSpeedSelect");
   const startArenaBtn = document.getElementById("startArenaBtn");
   const pauseArenaBtn = document.getElementById("pauseArenaBtn");
@@ -266,7 +265,6 @@
       agent_a: String(agentASelect.value || ""),
       agent_b: String(agentBSelect.value || ""),
       starting_agent: String(startingAgentSelect.value || "agent_a"),
-      seed: Number(arenaSeedInput.value || 7),
     };
     const response = await fetch(`${apiBase}/arena/matches`, {
       method: "POST",
