@@ -43,7 +43,13 @@ SKLEARN_AVAILABLE = DecisionTreeClassifier is not None and MLPClassifier is not 
 
 @dataclass(slots=True)
 class TrainConfig:
-    """Configuration for supervised training runs."""
+    """Configuration for supervised training runs.
+
+    Role
+    ----
+    Carries both standard model hyperparameters and Connect4-specific training
+    dataset filters such as session selection mode and actor scope.
+    """
 
     model_type: str = "decision_tree"
     lookback: int = 5
@@ -71,6 +77,8 @@ class FrequencyModel:
         self.global_counts = np.ones(7, dtype=float)
 
     def fit(self, contexts: list[tuple[int, ...]], y: np.ndarray) -> "FrequencyModel":
+        """Fit top-row-context frequencies with Laplace-style smoothing."""
+
         for context, label in zip(contexts, y):
             if context not in self.context_counts:
                 self.context_counts[context] = np.ones(7, dtype=float)
@@ -79,14 +87,20 @@ class FrequencyModel:
         return self
 
     def predict_context(self, context: tuple[int, ...]) -> int:
+        """Predict the most likely column for one symbolic top-row context."""
+
         counts = self.context_counts.get(context, self.global_counts)
         return int(np.argmax(counts))
 
     def predict_contexts(self, contexts: list[tuple[int, ...]]) -> np.ndarray:
+        """Vectorized prediction over multiple symbolic contexts."""
+
         return np.asarray([self.predict_context(context) for context in contexts], dtype=int)
 
 
 def _parse_board(raw: str | list[int]) -> list[int]:
+    """Normalize a persisted board snapshot into the flat 42-cell form."""
+
     if isinstance(raw, list):
         return [int(v) for v in raw]
     payload = json.loads(raw)
@@ -102,6 +116,11 @@ def build_dataset(rows: list[dict], lookback: int) -> tuple[np.ndarray, np.ndarr
     ----
     This is the canonical transformation from persisted and curated gameplay or
     arena move rows into the Connect4 supervised training view.
+
+    Notes
+    -----
+    Every included move contributes one sample. Early moves use the available
+    history and left-pad the remaining action-history window.
     """
 
     if lookback <= 0:
@@ -148,6 +167,8 @@ def _split(
     test_size: float,
     random_state: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[int, ...]], list[tuple[int, ...]]]:
+    """Deterministically split the curated dataset into train/test partitions."""
+
     count = len(X)
     indices = list(range(count))
     rng = Random(random_state)
@@ -169,6 +190,8 @@ def _split(
 
 
 def _majority_baseline(y_true: np.ndarray, y_train: np.ndarray) -> float:
+    """Compute the majority-column baseline accuracy for comparison metrics."""
+
     if len(y_true) == 0:
         return 0.0
     majority = int(np.argmax(np.bincount(y_train if len(y_train) else y_true)))
@@ -182,6 +205,11 @@ def training_readiness(rows: list[dict], lookback: int, minimum_samples: int = 2
     -----
     The return payload is UI-facing and is meant to be rendered directly by the
     Connect4 training page.
+
+    Cross-Repo Context
+    ------------------
+    This mirrors the RPS readiness helper while exposing Connect4's different
+    sample-count semantics to the UI.
     """
 
     X, _, _ = build_dataset(rows, lookback=lookback)
@@ -214,6 +242,11 @@ def train_model(rows: list[dict], config: TrainConfig, artifact_path: str) -> di
     Used By
     -------
     ``c4_training.jobs.TrainingJobManager``.
+
+    Side Effects
+    ------------
+    Serializes the trained artifact to local disk or object storage and returns
+    the metrics payload later stored in the model registry.
     """
 
     X, y, contexts = build_dataset(rows, lookback=config.lookback)
@@ -299,7 +332,14 @@ def load_artifact(path: str) -> dict[str, Any]:
 
 
 def _feature_vector(board: list[int], history_actions: list[int], lookback: int) -> np.ndarray:
-    """Encode one board and recent action history into a model input vector."""
+    """Encode one board and recent action history into a model input vector.
+
+    Notes
+    -----
+    The board carries the structural game state while the padded one-hot action
+    history supplies short-term temporal context without reconstructing the full
+    move tree inside the model.
+    """
 
     features: list[float] = [float(v) for v in board]
     history = history_actions[-lookback:]
@@ -325,6 +365,11 @@ def predict_action(
     ------------------
     The special ``active_model`` Connect4 gameplay path eventually reaches this
     logic through the model-backed agent implementation.
+
+    Notes
+    -----
+    Returning `None` when the model picks an illegal move lets the caller fall
+    back to a heuristic move policy rather than trusting invalid output.
     """
 
     if not valid_moves:

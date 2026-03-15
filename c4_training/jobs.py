@@ -25,7 +25,14 @@ except Exception:  # pragma: no cover
 
 
 class TrainingJobManager:
-    """Manage supervised training execution locally or via Cloud Tasks."""
+    """Manage supervised training execution locally or via Cloud Tasks.
+
+    Role
+    ----
+    This manager is the operational bridge between the Connect4 training UI and
+    the pure supervised pipeline. It also injects the session-curation settings
+    that make Connect4 training more selective than the simpler RPS flow.
+    """
 
     def __init__(
         self,
@@ -80,7 +87,14 @@ class TrainingJobManager:
         return self.repository.get_training_job(job_id) or job
 
     def _config_from_payload(self, payload: dict) -> TrainConfig:
-        """Normalize one API payload into the internal training config."""
+        """Normalize one API payload into the internal training config.
+
+        Notes
+        -----
+        Selection and actor-scope fields are part of the persisted config so a
+        queued job always trains against the exact curated dataset view the user
+        requested at submission time.
+        """
 
         hidden_layer_sizes = payload.get("hidden_layer_sizes", [64, 32])
         if isinstance(hidden_layer_sizes, str):
@@ -150,6 +164,11 @@ class TrainingJobManager:
         ------------
         Reads curated move rows, writes the artifact to local or object storage,
         creates a model-registry row, and updates job status/progress.
+
+        Cross-Repo Context
+        ------------------
+        This follows the same lifecycle as RPS training jobs while adding the
+        Connect4-specific curation filters before dataset construction.
         """
 
         try:
