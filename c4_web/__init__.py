@@ -1,4 +1,17 @@
-"""Flask application factory and extension wiring for the c4 web app."""
+"""Flask application factory and extension wiring for the c4 web app.
+
+Role
+----
+Assemble the standalone Connect4 lab by wiring persistence, gameplay runtime
+cache, supervised training jobs, RL jobs, arena jobs, and the page/API
+blueprints into one Flask application.
+
+Cross-Repo Context
+------------------
+``c4`` intentionally mirrors the high-level structure of ``rps`` so the two
+labs can share operational conventions under AIX while remaining independent
+repos.
+"""
 
 from __future__ import annotations
 
@@ -26,7 +39,11 @@ def _read_secret_version(secret_version_name: str) -> str:
 
 
 def _resolve_secret_into_config(app: Flask, *, target_key: str, source_key: str) -> None:
-    """Populate a config value from Secret Manager when direct value is empty."""
+    """Populate a config value from Secret Manager when direct value is empty.
+
+    This keeps standalone deployment and AIX mounting on the same configuration
+    contract.
+    """
 
     if str(app.config.get(target_key, "")).strip():
         return
@@ -47,6 +64,8 @@ def _normalize_base_url(value: str) -> str:
 
 
 def _aix_page_url(base_url: str, path: str) -> str:
+    """Build one AIX-owned page URL from the configured hub base URL."""
+
     base = _normalize_base_url(base_url)
     if base == "/":
         return path
@@ -54,7 +73,14 @@ def _aix_page_url(base_url: str, path: str) -> str:
 
 
 def create_app(config: dict | None = None) -> Flask:
-    """Create and configure the Flask application instance."""
+    """Create and configure the Flask application instance.
+
+    Cross-Repo Context
+    ------------------
+    AIX mounts this same factory locally under ``/c4``. In production, the same
+    app is deployed as the standalone Connect4 service and routed back under the
+    umbrella path layout.
+    """
 
     root = Path(__file__).resolve().parents[1]
     data_dir = root / "data"
@@ -134,6 +160,8 @@ def create_app(config: dict | None = None) -> Flask:
 
     @app.context_processor
     def inject_template_globals() -> dict:
+        """Expose AIX navigation URLs to the standalone Connect4 templates."""
+
         hub_url = _normalize_base_url(app.config.get("AIX_HUB_URL", "/"))
         return {
             "aix_hub_url": hub_url,

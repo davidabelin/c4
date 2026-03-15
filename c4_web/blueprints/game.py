@@ -1,4 +1,11 @@
-"""Gameplay API routes for human-vs-agent Connect4 interactions."""
+"""Gameplay API routes for human-vs-agent Connect4 interactions.
+
+Role
+----
+Expose the low-latency Connect4 gameplay API, including session creation,
+player moves, heuristic column analysis, reset/undo behavior, and one-shot
+agent-vs-agent match execution.
+"""
 
 from __future__ import annotations
 
@@ -22,18 +29,26 @@ game_bp = Blueprint("game_api", __name__, url_prefix="/api/v1")
 
 
 def _repo():
+    """Return the repository extension that owns persisted Connect4 state."""
+
     return current_app.extensions["repository"]
 
 
 def _runtime():
+    """Return the in-memory runtime cache used for low-latency play."""
+
     return current_app.extensions["game_runtime"]
 
 
 def _config() -> Connect4Config:
+    """Return the canonical 6x7 Connect4 board configuration used by the app."""
+
     return Connect4Config(rows=6, columns=7, inarow=4)
 
 
 def _decode_board(raw_value):
+    """Decode stored board JSON into the flat integer list form used in APIs."""
+
     if isinstance(raw_value, list):
         return [int(v) for v in raw_value]
     if isinstance(raw_value, str):
@@ -42,6 +57,8 @@ def _decode_board(raw_value):
 
 
 def _serialize_game(game: dict) -> dict:
+    """Serialize one persisted Connect4 game row into the API response shape."""
+
     board = _decode_board(game.get("current_board_json", "[]"))
     return {
         "game_id": int(game["id"]),
@@ -59,10 +76,14 @@ def _serialize_game(game: dict) -> dict:
 
 
 def _available_agent_names() -> list[str]:
+    """Return the set of built-in playable Connect4 agent names."""
+
     return [spec.name for spec in list_agent_specs()]
 
 
 def _default_match_opponent(agent_name: str) -> str:
+    """Choose a default arena/match opponent distinct from ``agent_name``."""
+
     for candidate in _available_agent_names():
         if candidate != agent_name:
             return candidate
@@ -70,6 +91,8 @@ def _default_match_opponent(agent_name: str) -> str:
 
 
 def _build_agent_from_name(agent_name: str):
+    """Resolve one gameplay-facing agent name to a concrete agent instance."""
+
     if agent_name == "active_model":
         model_record = _repo().get_active_model()
         if model_record is None:
@@ -82,6 +105,12 @@ def _build_agent_from_name(agent_name: str):
 
 
 def _resolve_agent_factory_and_signature(game: dict):
+    """Return an agent factory and cache signature for one persisted game row.
+
+    The signature is used to invalidate cached runtime state when the active
+    model changes.
+    """
+
     if str(game["agent_name"]) == "active_model":
         model_record = _repo().get_active_model()
         if model_record is None:
@@ -94,6 +123,14 @@ def _resolve_agent_factory_and_signature(game: dict):
 
 
 def _load_runtime_state(game: dict) -> GameRuntimeState:
+    """Load or build the runtime agent state for the active game session.
+
+    Role
+    ----
+    Hide the replay-and-cache logic required to restore stateful Connect4
+    agents from persisted move history.
+    """
+
     game_id = int(game["id"])
     session_index = int(game["session_index"])
     cached = _runtime().get(game_id)
@@ -121,6 +158,8 @@ def _load_runtime_state(game: dict) -> GameRuntimeState:
 
 @game_bp.get("/agents")
 def list_agents():
+    """List heuristic and trained agents available to UI/API clients."""
+
     specs = list_agent_specs()
     models = _repo().list_models(limit=1)
     payload = [
@@ -144,6 +183,8 @@ def list_agents():
 
 @game_bp.post("/games")
 def create_game():
+    """Create a new Connect4 game session and optional AI opening move."""
+
     payload = request.get_json(silent=True) or {}
     agent_name = str(payload.get("agent", current_app.config["DEFAULT_AGENT"]))
     opening_player = str(payload.get("opening_player", "player")).strip().lower()
@@ -198,6 +239,8 @@ def create_game():
 
 @game_bp.get("/games/<int:game_id>")
 def get_game(game_id: int):
+    """Return current game state plus persisted move history for one game id."""
+
     game = _repo().get_game(game_id)
     if game is None:
         return jsonify({"error": "Game not found."}), 404
@@ -207,6 +250,14 @@ def get_game(game_id: int):
 
 @game_bp.post("/games/<int:game_id>/move")
 def play_move(game_id: int):
+    """Resolve one player move, optional AI response, and persistence update.
+
+    Side Effects
+    ------------
+    Mutates persistent game state, writes move rows, and updates or clears the
+    cached runtime state depending on terminal status.
+    """
+
     started = perf_counter()
     payload = request.get_json(silent=True) or {}
     if "action" not in payload:
@@ -281,6 +332,14 @@ def play_move(game_id: int):
 
 @game_bp.get("/games/<int:game_id>/analysis")
 def analyze_game(game_id: int):
+    """Return heuristic column forecasts for the current game state.
+
+    Notes
+    -----
+    The returned percentages are independent win estimates, not a normalized
+    probability distribution over all columns.
+    """
+
     game = _repo().get_game(game_id)
     if game is None:
         return jsonify({"error": "Game not found."}), 404
@@ -324,6 +383,8 @@ def analyze_game(game_id: int):
 
 @game_bp.post("/games/<int:game_id>/reset")
 def reset_game(game_id: int):
+    """Reset one Connect4 game to an empty board and fresh live score."""
+
     updated_game = _repo().reset_game(game_id, board=[0] * 42)
     if updated_game is None:
         return jsonify({"error": "Game not found."}), 404
@@ -333,6 +394,8 @@ def reset_game(game_id: int):
 
 @game_bp.post("/games/<int:game_id>/undo")
 def undo_last_turn(game_id: int):
+    """Undo the most recent player+AI turn pair for an active game session."""
+
     game = _repo().get_game(game_id)
     if game is None:
         return jsonify({"error": "Game not found."}), 404
@@ -350,7 +413,13 @@ def undo_last_turn(game_id: int):
 
 @game_bp.post("/matches")
 def run_match():
-    """Run one non-persisted agent-vs-agent match and return a replay trace."""
+    """Run one non-persisted agent-vs-agent match and return a replay trace.
+
+    Notes
+    -----
+    This endpoint is intentionally stateless. Persisted arena playback lives in
+    ``c4_web.match_jobs`` and ``c4_web.blueprints.arena``.
+    """
 
     payload = request.get_json(silent=True) or {}
     agent_a_name = str(payload.get("agent_a", current_app.config["DEFAULT_AGENT"]))

@@ -1,4 +1,11 @@
-"""Asynchronous orchestration for supervised training jobs."""
+"""Asynchronous orchestration for supervised training jobs.
+
+Role
+----
+Own the operational lifecycle around Connect4 supervised training, including
+curated-session selection semantics, local execution, and optional Cloud Tasks
+dispatch in cloud deployments.
+"""
 
 from __future__ import annotations
 
@@ -47,7 +54,13 @@ class TrainingJobManager:
         self.executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="c4-train")
 
     def submit_job(self, payload: dict) -> dict:
-        """Persist and schedule a training job."""
+        """Persist and schedule a training job.
+
+        Cross-Repo Context
+        ------------------
+        This is the bridge between the Connect4 training UI/API and the pure
+        supervised training pipeline in ``c4_training.supervised``.
+        """
 
         config = self._config_from_payload(payload)
         job = self.repository.create_training_job(config.model_type, payload)
@@ -67,6 +80,8 @@ class TrainingJobManager:
         return self.repository.get_training_job(job_id) or job
 
     def _config_from_payload(self, payload: dict) -> TrainConfig:
+        """Normalize one API payload into the internal training config."""
+
         hidden_layer_sizes = payload.get("hidden_layer_sizes", [64, 32])
         if isinstance(hidden_layer_sizes, str):
             hidden_layer_sizes = [int(token.strip()) for token in hidden_layer_sizes.split(",") if token.strip()]
@@ -88,6 +103,8 @@ class TrainingJobManager:
         )
 
     def _enqueue_job(self, job_id: int) -> None:
+        """Create one Cloud Tasks HTTP task for a queued training job."""
+
         if tasks_v2 is None:
             raise RuntimeError("google-cloud-tasks is required for task_queue execution mode")
         if not self.task_project_id or not self.task_location or not self.task_queue or not self.worker_url:
@@ -127,6 +144,14 @@ class TrainingJobManager:
         self._run_job(job_id, config)
 
     def _run_job(self, job_id: int, config: TrainConfig) -> None:
+        """Run the full supervised training lifecycle for one Connect4 job.
+
+        Side Effects
+        ------------
+        Reads curated move rows, writes the artifact to local or object storage,
+        creates a model-registry row, and updates job status/progress.
+        """
+
         try:
             self.repository.update_training_job(job_id, status="running", progress=0.05)
             rows = self.repository.list_ai_moves_for_training(
@@ -157,4 +182,6 @@ class TrainingJobManager:
             self.repository.update_training_job(job_id, status="failed", progress=1.0, error_message=str(exc))
 
     def shutdown(self) -> None:
+        """Release local executor resources without waiting for active jobs."""
+
         self.executor.shutdown(wait=False)

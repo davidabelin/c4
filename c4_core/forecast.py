@@ -1,4 +1,11 @@
-"""Heuristic Connect4 column forecast helpers shared by play and arena views."""
+"""Heuristic Connect4 column forecast helpers shared by play and arena views.
+
+Role
+----
+Provide the independent per-column win estimates shown in Connect4 play and
+arena UIs without requiring a full search engine or a separately trained value
+network.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +20,8 @@ from c4_core.types import Connect4Config
 
 
 def _window_score(window: list[int], perspective_mark: int, inarow: int) -> float:
+    """Score one contiguous board window from a single-player perspective."""
+
     opponent_mark = 1 if perspective_mark == 2 else 2
     perspective_count = window.count(perspective_mark)
     opponent_count = window.count(opponent_mark)
@@ -35,6 +44,8 @@ def _window_score(window: list[int], perspective_mark: int, inarow: int) -> floa
 
 
 def terminal_outcome_for_board(board: list[int], *, config: Connect4Config) -> str | None:
+    """Return the resolved outcome for a finished board, else ``None``."""
+
     grid = board_to_grid(board, config)
     if has_any_four(grid, mark=1, config=config):
         return "player"
@@ -46,6 +57,14 @@ def terminal_outcome_for_board(board: list[int], *, config: Connect4Config) -> s
 
 
 def _heuristic_probability(board: list[int], *, perspective_mark: int, config: Connect4Config) -> float:
+    """Compress a hand-built board heuristic into a pseudo-probability.
+
+    Notes
+    -----
+    This is an independent win estimate, not a calibrated probability
+    distribution across columns.
+    """
+
     grid = board_to_grid(board, config)
     score = 0.0
 
@@ -79,6 +98,8 @@ def _heuristic_probability(board: list[int], *, perspective_mark: int, config: C
 
 
 def _outcome_to_probability(outcome: str, *, perspective_mark: int) -> float:
+    """Map a terminal symbolic outcome into a perspective-specific score."""
+
     if outcome == "tie":
         return 0.5
     if outcome == "player":
@@ -96,6 +117,15 @@ def _simulate_guided_outcome(
     lookahead: int,
     config: Connect4Config,
 ) -> float:
+    """Roll forward from one board using a heuristic policy for limited depth.
+
+    Role
+    ----
+    Approximate "what happens if we choose this column?" without running a full
+    exhaustive search. The same helper supports both play-page hints and arena
+    replay analysis.
+    """
+
     working = list(board)
     current_mark = int(next_mark)
     seed_value = 1009 + lookahead * 17 + sum((idx + 1) * int(value) for idx, value in enumerate(board))
@@ -127,7 +157,14 @@ def forecast_columns(
     lookahead: int,
     config: Connect4Config,
 ) -> list[dict]:
-    """Return one independent win estimate for each legal column."""
+    """Return one independent win estimate for each legal column.
+
+    Returns
+    -------
+    list[dict]
+        Forecast rows sorted strongest-first, each with ``column``,
+        ``win_estimate``, and a user-facing ``label``.
+    """
 
     forecasts: list[dict] = []
     opponent_mark = 1 if int(perspective_mark) == 2 else 2

@@ -1,4 +1,17 @@
-"""Supervised learning pipeline for c4 move-selection models."""
+"""Supervised learning pipeline for c4 move-selection models.
+
+Role
+----
+Convert curated Connect4 move rows into supervised datasets, fit supported
+models, and serialize artifacts that can later power ``active_model`` gameplay
+and arena participation.
+
+Cross-Repo Context
+------------------
+This module intentionally mirrors the shape of ``rps_training.supervised`` even
+though Connect4 uses board-state features and curated move-session semantics
+instead of RPS round-history windows.
+"""
 
 from __future__ import annotations
 
@@ -45,7 +58,13 @@ class TrainConfig:
 
 
 class FrequencyModel:
-    """Simple top-row context frequency baseline."""
+    """Simple top-row context frequency baseline.
+
+    Role
+    ----
+    Provide a deterministic lightweight baseline that keeps the full training
+    and activation pipeline usable even without scikit-learn-heavy models.
+    """
 
     def __init__(self) -> None:
         self.context_counts: dict[tuple[int, ...], np.ndarray] = {}
@@ -77,7 +96,13 @@ def _parse_board(raw: str | list[int]) -> list[int]:
 
 
 def build_dataset(rows: list[dict], lookback: int) -> tuple[np.ndarray, np.ndarray, list[tuple[int, ...]]]:
-    """Construct supervised features/labels from curated move rows."""
+    """Construct supervised features/labels from curated move rows.
+
+    Role
+    ----
+    This is the canonical transformation from persisted and curated gameplay or
+    arena move rows into the Connect4 supervised training view.
+    """
 
     if lookback <= 0:
         raise ValueError("lookback must be positive")
@@ -151,7 +176,13 @@ def _majority_baseline(y_true: np.ndarray, y_train: np.ndarray) -> float:
 
 
 def training_readiness(rows: list[dict], lookback: int, minimum_samples: int = 20) -> dict:
-    """Summarize whether current move data can support supervised training."""
+    """Summarize whether current move data can support supervised training.
+
+    Notes
+    -----
+    The return payload is UI-facing and is meant to be rendered directly by the
+    Connect4 training page.
+    """
 
     X, _, _ = build_dataset(rows, lookback=lookback)
     sample_count = int(len(X))
@@ -178,7 +209,12 @@ def training_readiness(rows: list[dict], lookback: int, minimum_samples: int = 2
 
 
 def train_model(rows: list[dict], config: TrainConfig, artifact_path: str) -> dict[str, Any]:
-    """Train one supervised model and persist artifact/metrics."""
+    """Train one supervised model and persist artifact/metrics.
+
+    Used By
+    -------
+    ``c4_training.jobs.TrainingJobManager``.
+    """
 
     X, y, contexts = build_dataset(rows, lookback=config.lookback)
     if len(X) < 20:
@@ -263,6 +299,8 @@ def load_artifact(path: str) -> dict[str, Any]:
 
 
 def _feature_vector(board: list[int], history_actions: list[int], lookback: int) -> np.ndarray:
+    """Encode one board and recent action history into a model input vector."""
+
     features: list[float] = [float(v) for v in board]
     history = history_actions[-lookback:]
     if len(history) < lookback:
@@ -281,7 +319,13 @@ def predict_action(
     history_actions: list[int],
     valid_moves: list[int],
 ) -> int | None:
-    """Predict the next move from artifact + board state."""
+    """Predict the next move from artifact + board state.
+
+    Cross-Repo Context
+    ------------------
+    The special ``active_model`` Connect4 gameplay path eventually reaches this
+    logic through the model-backed agent implementation.
+    """
 
     if not valid_moves:
         return None

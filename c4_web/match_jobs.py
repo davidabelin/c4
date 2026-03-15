@@ -1,4 +1,10 @@
-"""Asynchronous orchestration for persisted agent-vs-agent Connect4 matches."""
+"""Asynchronous orchestration for persisted agent-vs-agent Connect4 matches.
+
+Role
+----
+Own the persisted arena workflow for Connect4, including optional per-move
+analysis snapshots that enrich the replay trace for the spectator UI.
+"""
 
 from __future__ import annotations
 
@@ -13,10 +19,14 @@ from c4_storage.repository import C4Repository
 
 
 def _available_agent_names() -> list[str]:
+    """Return all heuristic and built-in Connect4 agent names."""
+
     return [spec.name for spec in list_agent_specs()]
 
 
 def _default_match_opponent(agent_name: str) -> str:
+    """Choose a default opponent distinct from the requested agent."""
+
     for candidate in _available_agent_names():
         if candidate != agent_name:
             return candidate
@@ -24,6 +34,8 @@ def _default_match_opponent(agent_name: str) -> str:
 
 
 def _build_agent_from_name(repository: C4Repository, agent_name: str):
+    """Resolve one arena-facing agent identifier into a concrete agent object."""
+
     if agent_name == "active_model":
         model_record = repository.get_active_model()
         if model_record is None:
@@ -35,7 +47,14 @@ def _build_agent_from_name(repository: C4Repository, agent_name: str):
 
 
 class MatchJobManager:
-    """Manage background arena matches and persisted replay traces."""
+    """Manage background arena matches and persisted replay traces.
+
+    Cross-Repo Context
+    ------------------
+    This is the Connect4 parallel to ``rps_web.match_jobs.MatchJobManager``,
+    with one extra responsibility: enriching replay frames with heuristic column
+    forecasts for the arena viewer.
+    """
 
     def __init__(self, repository: C4Repository, default_agent: str, max_workers: int = 2) -> None:
         self.repository = repository
@@ -44,6 +63,8 @@ class MatchJobManager:
         self.executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="c4-arena")
 
     def submit_job(self, payload: dict) -> dict:
+        """Validate one arena payload, persist the match row, and enqueue work."""
+
         config = self._config_from_payload(payload)
         _build_agent_from_name(self.repository, config["agent_a"])
         _build_agent_from_name(self.repository, config["agent_b"])
@@ -56,6 +77,8 @@ class MatchJobManager:
         return job
 
     def _config_from_payload(self, payload: dict) -> dict:
+        """Normalize one API payload into the stored arena match config."""
+
         agent_a = str(payload.get("agent_a", self.default_agent))
         agent_b = str(payload.get("agent_b", _default_match_opponent(agent_a)))
         starting_agent = str(payload.get("starting_agent", "agent_a")).strip().lower()
@@ -84,6 +107,8 @@ class MatchJobManager:
         }
 
     def _run_job(self, job_id: int, config: dict) -> None:
+        """Execute one persisted Connect4 arena match and update replay state."""
+
         trace: list[dict] = []
         max_turns = int(config["max_turns"])
         try:
@@ -173,4 +198,6 @@ class MatchJobManager:
             )
 
     def shutdown(self) -> None:
+        """Release local executor resources without waiting for active jobs."""
+
         self.executor.shutdown(wait=False)
