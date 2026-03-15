@@ -1,4 +1,17 @@
-"""Repository layer for c4 metadata using SQLite/PostgreSQL via SQLAlchemy."""
+"""Repository layer for Connect4 gameplay, training, RL, and arena metadata.
+
+Role
+----
+This module owns all persisted state for the `c4` lab: human-vs-agent games,
+move history, curated training-session selection, supervised jobs, RL jobs,
+model registry entries, and persisted arena replays.
+
+Cross-Repo Context
+------------------
+The repository intentionally parallels `rps_storage.repository` so the two labs
+can share the same high-level orchestration shape even though Connect4 stores
+board states and training-session curation metadata that RPS does not need.
+"""
 
 from __future__ import annotations
 
@@ -34,7 +47,14 @@ def _to_sqlite_url(path_value: str) -> str:
 
 
 class C4Repository:
-    """Persistence facade for c4 gameplay, training jobs, and model metadata."""
+    """Persistence facade for Connect4 gameplay, training, RL, and arena state.
+
+    Role
+    ----
+    The web blueprints and job managers use this class as their only database
+    boundary. It hides SQL dialect differences and exposes dict-based payloads
+    that the rest of the lab can consume without ORM coupling.
+    """
 
     def __init__(self, db_target: str) -> None:
         self._lock = RLock()
@@ -60,6 +80,14 @@ class C4Repository:
 
     @staticmethod
     def _normalize_training_selection(selection: str | None) -> str | None:
+        """Normalize one training-curation selection token.
+
+        Notes
+        -----
+        `None` and `unset` both mean "remove any explicit override" so the
+        session falls back to default inclusion rules.
+        """
+
         if selection is None:
             return None
         normalized = str(selection).strip().lower()
@@ -71,6 +99,8 @@ class C4Repository:
 
     @staticmethod
     def _normalize_selection_mode(selection_mode: str | None) -> str:
+        """Normalize the training-session filter mode used by dataset queries."""
+
         normalized = str(selection_mode or "all").strip().lower()
         if normalized not in {"all", "selected"}:
             raise ValueError("selection_mode must be one of: all, selected.")
@@ -78,6 +108,8 @@ class C4Repository:
 
     @staticmethod
     def _normalize_actor_scope(actor_scope: str | None) -> str:
+        """Normalize the actor filter used when building training rows."""
+
         normalized = str(actor_scope or "algorithm").strip().lower()
         if normalized not in {"algorithm", "human", "all"}:
             raise ValueError("actor_scope must be one of: algorithm, human, all.")
@@ -327,7 +359,17 @@ class C4Repository:
                 return row or {}
 
     def create_game(self, agent_name: str, board: list[int]) -> dict:
-        """Create a new game row initialized to active state and empty score."""
+        """Create the long-lived game shell for one Connect4 session stack.
+
+        Role
+        ----
+        A single game id survives multiple resets. The active session lives on
+        the `games` row while the per-move history is written to `moves`.
+
+        Used By
+        -------
+        `c4_web.blueprints.game` when the play page starts a new game.
+        """
 
         now = utcnow_iso()
         return self._insert_and_fetch(
@@ -350,10 +392,20 @@ class C4Repository:
         )
 
     def get_game(self, game_id: int) -> dict | None:
+        """Fetch one game row by id."""
+
         with self.engine.begin() as conn:
             return self._first_or_none(conn.execute(text("SELECT * FROM games WHERE id = :id"), {"id": int(game_id)}).mappings())
 
     def reset_game(self, game_id: int, board: list[int]) -> dict | None:
+        """Advance one existing game into a fresh session with a clean board.
+
+        Side Effects
+        ------------
+        Increments `session_index`, clears terminal status, and resets the
+        rolling counters stored on the `games` row.
+        """
+
         game = self.get_game(game_id)
         if not game:
             return None
@@ -388,6 +440,8 @@ class C4Repository:
         return row
 
     def _next_move_index(self, conn, *, game_id: int, session_index: int) -> int:
+        """Return the next monotonic move index for one game session."""
+
         row = self._first_or_none(
             conn.execute(
                 text(
@@ -417,6 +471,15 @@ class C4Repository:
         outcome: str,
         created_at: str,
     ) -> dict:
+        """Insert one move row and return the stored payload.
+
+        Role
+        ----
+        Both human-vs-agent gameplay and arena replay ingestion use the same
+        move-row shape, so this helper centralizes JSON encoding and dialect-
+        tolerant `RETURNING` behavior.
+        """
+
         try:
             row = self._first_or_none(
                 conn.execute(
@@ -495,7 +558,19 @@ class C4Repository:
         board_after_ai: list[int] | None,
         outcome: str,
     ) -> tuple[list[dict], dict]:
-        """Persist one player turn (+ optional ai response) and update game state."""
+        """Persist one player turn, optional AI reply, and game aggregates.
+
+        Role
+        ----
+        This is the main transactional write path for Connect4 gameplay. It
+        keeps the move rows, board snapshot, winner/status flags, and rolling
+        scoreboard in sync so the UI never sees a partially applied turn.
+
+        Returns
+        -------
+        tuple[list[dict], dict]
+            The inserted move rows followed by the updated game row.
+        """
 
         now = utcnow_iso()
         is_terminal = str(outcome) in {"player", "ai", "tie"}
@@ -589,7 +664,14 @@ class C4Repository:
         board_before: list[int],
         board_after: list[int],
     ) -> tuple[dict, dict]:
-        """Persist one AI opening move without incrementing player-turn counters."""
+        """Persist an AI-first opening move before the human has acted.
+
+        Role
+        ----
+        Connect4 supports AI-first games. This helper stores that opening move
+        while leaving `rounds_played` untouched because no full human turn has
+        completed yet.
+        """
 
         now = utcnow_iso()
         with self._lock:
@@ -637,7 +719,15 @@ class C4Repository:
                 return ai_row, (updated or {})
 
     def undo_last_turn(self, *, game_id: int, session_index: int) -> tuple[dict, dict] | None:
-        """Undo the latest move set (player+ai turn, or lone opening ai move)."""
+        """Undo the latest persisted move group and repair aggregate counters.
+
+        Role
+        ----
+        Undo is more complex than in RPS because a single visible turn may have
+        one or two move rows. This method classifies the tail shape, deletes the
+        right rows, restores the prior board snapshot, and rolls back any
+        terminal scoreboard changes.
+        """
 
         now = utcnow_iso()
         with self._lock:
@@ -789,6 +879,8 @@ class C4Repository:
         return [dict(row) for row in rows]
 
     def _training_selection_lookup(self, conn) -> dict[tuple[str, int, int], str]:
+        """Return explicit include/exclude overrides for training sessions."""
+
         rows = conn.execute(
             text(
                 """
@@ -811,6 +903,8 @@ class C4Repository:
         session_index: int,
         selection_mode: str,
     ) -> bool:
+        """Resolve whether one session survives the current curation mode."""
+
         selection = selection_lookup.get((str(source_kind), int(source_id), int(session_index)))
         if selection_mode == "selected":
             return selection == "include"
@@ -818,6 +912,8 @@ class C4Repository:
 
     @staticmethod
     def _actor_allowed_for_scope(actor: str, actor_scope: str) -> bool:
+        """Return whether one stored actor belongs to the requested scope."""
+
         actor_name = str(actor).strip().lower()
         if actor_scope == "all":
             return actor_name in {"player", "ai", "agent_a", "agent_b"}
@@ -833,6 +929,15 @@ class C4Repository:
         session_index: int,
         selection: str | None,
     ) -> dict:
+        """Persist one include/exclude override for training-session curation.
+
+        Role
+        ----
+        The Connect4 training page lets the user curate sessions at game-level
+        granularity. This method stores the override state consumed later by
+        `list_training_sessions` and `list_training_rows`.
+        """
+
         normalized = self._normalize_training_selection(selection)
         source_kind_text = str(source_kind).strip().lower()
         if source_kind_text not in {"game", "arena"}:
@@ -888,6 +993,14 @@ class C4Repository:
         source_id: int,
         session_index: int,
     ) -> dict:
+        """Delete one curated training session from gameplay or arena history.
+
+        Notes
+        -----
+        Active gameplay sessions and queued/running arena matches are protected
+        so the UI cannot delete state that is still being mutated elsewhere.
+        """
+
         source_kind_text = str(source_kind).strip().lower()
         if source_kind_text not in {"game", "arena"}:
             raise ValueError("source_kind must be one of: game, arena.")
@@ -978,6 +1091,15 @@ class C4Repository:
         }
 
     def list_training_sessions(self, limit: int = 200) -> list[dict]:
+        """Return the user-facing session catalog used by training curation.
+
+        Role
+        ----
+        This method synthesizes a common session view across two sources:
+        human-vs-algorithm gameplay stored in `moves` and algorithm-vs-
+        algorithm arena replays stored in `arena_matches`.
+        """
+
         limit_value = max(1, int(limit))
         with self.engine.begin() as conn:
             selection_lookup = self._training_selection_lookup(conn)
@@ -1086,6 +1208,15 @@ class C4Repository:
         selection_mode: str = "all",
         actor_scope: str = "algorithm",
     ) -> list[dict]:
+        """Return the canonical supervised-training rows after curation filters.
+
+        Role
+        ----
+        This is the storage boundary for the Connect4 supervised pipeline. It
+        applies session inclusion rules, actor filtering, and arena-trace
+        expansion so dataset builders see one normalized stream.
+        """
+
         normalized_selection_mode = self._normalize_selection_mode(selection_mode)
         normalized_actor_scope = self._normalize_actor_scope(actor_scope)
 
@@ -1180,9 +1311,13 @@ class C4Repository:
         selection_mode: str = "all",
         actor_scope: str = "algorithm",
     ) -> list[dict]:
+        """Backward-compatible alias for the curated training-row query."""
+
         return self.list_training_rows(selection_mode=selection_mode, actor_scope=actor_scope)
 
     def create_training_job(self, model_type: str, params: dict) -> dict:
+        """Create the persisted job shell for one supervised training request."""
+
         now = utcnow_iso()
         return self._insert_and_fetch(
             """
@@ -1204,6 +1339,8 @@ class C4Repository:
         error_message: str | None = None,
         model_id: int | None = None,
     ) -> dict | None:
+        """Patch mutable supervised-job fields and return the latest row."""
+
         updates: list[str] = []
         params: dict[str, Any] = {}
         if status is not None:
@@ -1233,17 +1370,29 @@ class C4Repository:
         return row
 
     def get_training_job(self, job_id: int) -> dict | None:
+        """Fetch one supervised training job by id."""
+
         with self.engine.begin() as conn:
             return self._first_or_none(
                 conn.execute(text("SELECT * FROM training_jobs WHERE id = :id"), {"id": int(job_id)}).mappings()
             )
 
     def list_training_jobs(self, limit: int = 100) -> list[dict]:
+        """List recent supervised training jobs ordered by descending id."""
+
         with self.engine.begin() as conn:
             rows = conn.execute(text("SELECT * FROM training_jobs ORDER BY id DESC LIMIT :limit"), {"limit": int(limit)}).mappings().all()
         return [dict(row) for row in rows]
 
     def create_model(self, name: str, model_type: str, artifact_path: str, lookback: int, metrics: dict) -> dict:
+        """Create a model-registry row plus numeric metric side-table entries.
+
+        Role
+        ----
+        The resulting row powers `active_model` selection in play and arena
+        flows, while numeric metrics remain queryable for later reporting.
+        """
+
         now = utcnow_iso()
         with self._lock:
             with self.engine.begin() as conn:
@@ -1312,21 +1461,29 @@ class C4Repository:
         return row or {}
 
     def list_models(self, limit: int = 200) -> list[dict]:
+        """List recent model registry rows ordered by descending id."""
+
         with self.engine.begin() as conn:
             rows = conn.execute(text("SELECT * FROM models ORDER BY id DESC LIMIT :limit"), {"limit": int(limit)}).mappings().all()
         return [dict(row) for row in rows]
 
     def get_model(self, model_id: int) -> dict | None:
+        """Fetch one model row by id."""
+
         with self.engine.begin() as conn:
             return self._first_or_none(conn.execute(text("SELECT * FROM models WHERE id = :id"), {"id": int(model_id)}).mappings())
 
     def get_active_model(self) -> dict | None:
+        """Fetch the most recently activated model row, if any."""
+
         with self.engine.begin() as conn:
             return self._first_or_none(
                 conn.execute(text("SELECT * FROM models WHERE is_active = 1 ORDER BY id DESC LIMIT 1")).mappings()
             )
 
     def activate_model(self, model_id: int) -> dict | None:
+        """Mark one model as the sole active runtime choice for play flows."""
+
         with self._lock:
             with self.engine.begin() as conn:
                 conn.execute(text("UPDATE models SET is_active = 0"))
@@ -1335,6 +1492,8 @@ class C4Repository:
         return row
 
     def create_rl_job(self, params: dict) -> dict:
+        """Create the persisted job shell for one RL training request."""
+
         now = utcnow_iso()
         return self._insert_and_fetch(
             """
@@ -1356,6 +1515,8 @@ class C4Repository:
         error_message: str | None = None,
         model_id: int | None = None,
     ) -> dict | None:
+        """Patch mutable RL-job fields and return the latest row."""
+
         updates: list[str] = []
         named: dict[str, Any] = {}
         if status is not None:
@@ -1383,15 +1544,27 @@ class C4Repository:
         return row
 
     def get_rl_job(self, job_id: int) -> dict | None:
+        """Fetch one RL job by id."""
+
         with self.engine.begin() as conn:
             return self._first_or_none(conn.execute(text("SELECT * FROM rl_jobs WHERE id = :id"), {"id": int(job_id)}).mappings())
 
     def list_rl_jobs(self, limit: int = 100) -> list[dict]:
+        """List recent RL jobs ordered by descending id."""
+
         with self.engine.begin() as conn:
             rows = conn.execute(text("SELECT * FROM rl_jobs ORDER BY id DESC LIMIT :limit"), {"limit": int(limit)}).mappings().all()
         return [dict(row) for row in rows]
 
     def create_arena_match(self, *, agent_a_name: str, agent_b_name: str, params: dict) -> dict:
+        """Create the persisted shell for one agent-vs-agent arena match.
+
+        Cross-Repo Context
+        ------------------
+        This mirrors the RPS arena table shape so both labs can store replayable
+        matches with summary and trace payloads under one shared concept.
+        """
+
         now = utcnow_iso()
         return self._insert_and_fetch(
             """
@@ -1426,6 +1599,8 @@ class C4Repository:
         trace: list[dict] | None = None,
         error_message: str | None = None,
     ) -> dict | None:
+        """Patch arena execution state, summary payload, and replay trace."""
+
         updates: list[str] = []
         named: dict[str, Any] = {}
         if status is not None:
@@ -1458,12 +1633,16 @@ class C4Repository:
         return row
 
     def get_arena_match(self, match_id: int) -> dict | None:
+        """Fetch one persisted arena match by id."""
+
         with self.engine.begin() as conn:
             return self._first_or_none(
                 conn.execute(text("SELECT * FROM arena_matches WHERE id = :id"), {"id": int(match_id)}).mappings()
             )
 
     def list_arena_matches(self, limit: int = 100) -> list[dict]:
+        """List recent arena matches ordered by descending id."""
+
         with self.engine.begin() as conn:
             rows = conn.execute(
                 text("SELECT * FROM arena_matches ORDER BY id DESC LIMIT :limit"),

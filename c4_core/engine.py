@@ -1,4 +1,17 @@
-"""Gameplay execution helpers for human-vs-agent Connect4 sessions."""
+"""Gameplay execution helpers for human-vs-agent Connect4 sessions.
+
+Role
+----
+This module is the pure gameplay layer used by the Connect4 web/API surface.
+It validates moves, applies board transitions, invokes the selected AI agent,
+and emits structured turn results without performing any persistence.
+
+Cross-Repo Context
+------------------
+`c4_core.engine` fills the same role for Connect4 that `rps_core.engine` fills
+for RPS: deterministic gameplay resolution under a storage-agnostic contract
+that the web layer can persist and replay.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +28,14 @@ from c4_core.types import Connect4Config, normalize_column
 
 @dataclass(slots=True)
 class TurnResult:
-    """One resolved player turn, including optional AI response."""
+    """One resolved human turn, including an optional AI reply.
+
+    Notes
+    -----
+    The Connect4 UI thinks in player turns, but storage records individual
+    moves. This dataclass bridges those views by carrying both the grouped turn
+    outcome and the intermediate board snapshots needed for persistence.
+    """
 
     round_index: int
     player_action: int
@@ -28,10 +48,20 @@ class TurnResult:
 
 
 def _to_obs(board: list[int], mark: int):
+    """Wrap a raw board list in the minimal observation shape agents expect."""
+
     return SimpleNamespace(board=list(board), mark=int(mark))
 
 
 def _legal_fallback(valid: list[int], *, rng: Random) -> int:
+    """Choose a safe fallback action when an agent errors or proposes junk.
+
+    Notes
+    -----
+    The fallback is center-biased before it becomes random so degraded play
+    still looks plausible and avoids obvious edge-column drift.
+    """
+
     # Prefer center, then near-center, then random.
     for preferred in (3, 4, 2, 5, 1, 6, 0):
         if preferred in valid:
@@ -47,7 +77,14 @@ def select_ai_action(
     mark: int = 2,
     rng: Random | None = None,
 ) -> int:
-    """Select one legal AI move from agent callable + board state."""
+    """Select one legal AI move from an agent callable and board state.
+
+    Role
+    ----
+    This function isolates all "call the agent, catch bad outputs, clamp to a
+    legal move" logic so the rest of the turn pipeline can assume it receives a
+    valid column index.
+    """
 
     random = rng or Random()
     valid = valid_columns(board, config)
@@ -72,7 +109,14 @@ def play_human_turn(
     round_index: int,
     rng: Random | None = None,
 ) -> TurnResult:
-    """Resolve one full player turn: player move, then optional AI move."""
+    """Resolve one full player turn: player move, then optional AI move.
+
+    Role
+    ----
+    This is the main low-level gameplay path used by the Connect4 play API. It
+    emits enough board snapshots for the repository layer to persist each move
+    row without recomputing transitions.
+    """
 
     random = rng or Random()
     if len(board) != int(config.rows) * int(config.columns):
@@ -141,7 +185,14 @@ def replay_ai_agent_state(agent: Any, moves: list[dict], config: Connect4Config)
     """Replay historic AI moves into stateful agents when supported.
 
     Most current heuristic agents are stateless callables, so this function is
-    intentionally lightweight. It only calls optional `reset`/`observe` methods.
+    intentionally lightweight. It only calls optional `reset`/`observe`
+    methods.
+
+    Cross-Repo Context
+    ------------------
+    This is the Connect4 analogue of replaying RPS rounds into an agent before
+    acting. The difference is that many Connect4 agents are stateless board
+    evaluators, so this helper degrades cleanly when no stateful hooks exist.
     """
 
     if hasattr(agent, "reset"):
