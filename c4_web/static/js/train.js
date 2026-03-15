@@ -122,7 +122,7 @@
     const info = body.readiness;
     const sessionCount = Number(info.session_count || 0);
     let text = `Samples: ${info.sample_count} (minimum ${info.minimum_required_samples}) from ${sessionCount} sessions.`;
-    text += info.can_train ? " Ready to train." : " Need more matching moves.";
+    text += info.can_train ? " Ready to train." : " Not ready to train yet.";
     if (!info.sklearn_available) {
       text += ` scikit-learn unavailable: ${info.sklearn_import_error || "import failed"}.`;
     }

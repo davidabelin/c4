@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import urljoin
 
 from flask import Flask
 
@@ -38,6 +39,18 @@ def _resolve_secret_into_config(app: Flask, *, target_key: str, source_key: str)
         raise RuntimeError(
             f"Failed loading {target_key} from Secret Manager secret version '{secret_version_name}': {exc}"
         ) from exc
+
+
+def _normalize_base_url(value: str) -> str:
+    raw = str(value or "").strip()
+    return raw or "/"
+
+
+def _aix_page_url(base_url: str, path: str) -> str:
+    base = _normalize_base_url(base_url)
+    if base == "/":
+        return path
+    return urljoin(base.rstrip("/") + "/", path.lstrip("/"))
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -121,8 +134,12 @@ def create_app(config: dict | None = None) -> Flask:
 
     @app.context_processor
     def inject_template_globals() -> dict:
+        hub_url = _normalize_base_url(app.config.get("AIX_HUB_URL", "/"))
         return {
-            "aix_hub_url": str(app.config.get("AIX_HUB_URL", "/")).strip() or "/",
+            "aix_hub_url": hub_url,
+            "aix_contact_url": _aix_page_url(hub_url, "/contact"),
+            "aix_privacy_url": _aix_page_url(hub_url, "/privacy"),
+            "aix_toc_url": _aix_page_url(hub_url, "/toc"),
         }
 
     return app
