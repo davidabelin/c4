@@ -27,7 +27,10 @@ def test_pages_include_aix_footer(client, path: str):
     response = client.get(path)
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert "GNU copyright 2026 AIX Protodyne" in html
+    assert "copyleft.svg" in html
+    assert 'width="16"' in html
+    assert 'height="16"' in html
+    assert "2026 AIX Protodyne" in html
     assert "Contact Us" in html
     assert "Privacy" in html
     assert "AIX TOC" in html
