@@ -14,14 +14,20 @@ training_bp = Blueprint("training_api", __name__, url_prefix="/api/v1")
 
 
 def _repo():
+    """Return the request-scoped repository extension."""
+
     return current_app.extensions["repository"]
 
 
 def _jobs():
+    """Return the training job manager extension."""
+
     return current_app.extensions["training_jobs"]
 
 
 def _decode_json(raw_value):
+    """Decode one JSON-backed storage field when possible."""
+
     if raw_value is None:
         return None
     try:
@@ -32,6 +38,8 @@ def _decode_json(raw_value):
 
 @training_bp.post("/training/jobs")
 def create_training_job():
+    """Create one supervised-training job with UI-friendly defaults."""
+
     payload = request.get_json(silent=True) or {}
     payload.setdefault("model_type", "decision_tree")
     payload.setdefault("lookback", 5)
@@ -49,6 +57,8 @@ def create_training_job():
 
 @training_bp.post("/internal/training/jobs/<int:job_id>/run")
 def run_training_job_internal(job_id: int):
+    """Execute one queued training job through the internal worker hook."""
+
     expected = current_app.config.get("INTERNAL_WORKER_TOKEN") or current_app.config.get("TRAINING_WORKER_TOKEN")
     provided = request.headers.get("X-Worker-Token", "")
     if expected and provided != expected:
@@ -67,6 +77,8 @@ def run_training_job_internal(job_id: int):
 
 @training_bp.get("/training/readiness")
 def get_training_readiness():
+    """Summarize whether the selected training slice is large enough to fit."""
+
     lookback = int(request.args.get("lookback", 5))
     selection_mode = str(request.args.get("selection_mode", "all"))
     actor_scope = str(request.args.get("actor_scope", "algorithm"))
@@ -79,6 +91,8 @@ def get_training_readiness():
 
 @training_bp.get("/training/sessions")
 def list_training_sessions():
+    """List persisted sessions that can participate in supervised training."""
+
     limit = int(request.args.get("limit", 200))
     sessions = _repo().list_training_sessions(limit=limit)
     return jsonify({"sessions": sessions})
@@ -86,6 +100,8 @@ def list_training_sessions():
 
 @training_bp.post("/training/sessions/selection")
 def set_training_session_selection():
+    """Set the include or exclude selection for one stored training session."""
+
     payload = request.get_json(silent=True) or {}
     if "source_kind" not in payload or "source_id" not in payload or "session_index" not in payload:
         return jsonify({"error": "source_kind, source_id, and session_index are required."}), 400
@@ -103,6 +119,8 @@ def set_training_session_selection():
 
 @training_bp.delete("/training/sessions")
 def delete_training_session():
+    """Delete one stored training session by source and session index."""
+
     payload = request.get_json(silent=True) or {}
     if "source_kind" not in payload or "source_id" not in payload or "session_index" not in payload:
         return jsonify({"error": "source_kind, source_id, and session_index are required."}), 400
@@ -119,12 +137,16 @@ def delete_training_session():
 
 @training_bp.get("/training/jobs")
 def list_training_jobs():
+    """List recent supervised-training jobs."""
+
     jobs = _repo().list_training_jobs(limit=100)
     return jsonify({"jobs": [_serialize_job(job) for job in jobs]})
 
 
 @training_bp.get("/training/jobs/<int:job_id>")
 def get_training_job(job_id: int):
+    """Return one supervised-training job by identifier."""
+
     job = _repo().get_training_job(job_id)
     if job is None:
         return jsonify({"error": "Training job not found."}), 404
@@ -133,11 +155,15 @@ def get_training_job(job_id: int):
 
 @training_bp.get("/training/jobs/<int:job_id>/events")
 def stream_training_job_events(job_id: int):
+    """Stream server-sent training job updates until completion."""
+
     if _repo().get_training_job(job_id) is None:
         return jsonify({"error": "Training job not found."}), 404
 
     @stream_with_context
     def event_stream():
+        """Yield incremental training job snapshots as SSE frames."""
+
         last_payload = None
         while True:
             job = _repo().get_training_job(job_id)
@@ -159,12 +185,16 @@ def stream_training_job_events(job_id: int):
 
 @training_bp.get("/models")
 def list_models():
+    """List registered supervised models."""
+
     models = _repo().list_models(limit=200)
     return jsonify({"models": [_serialize_model(model) for model in models]})
 
 
 @training_bp.post("/models/<int:model_id>/activate")
 def activate_model(model_id: int):
+    """Mark one model as the active inference model."""
+
     model = _repo().activate_model(model_id)
     if model is None:
         return jsonify({"error": "Model not found."}), 404
@@ -172,6 +202,8 @@ def activate_model(model_id: int):
 
 
 def _serialize_job(job: dict) -> dict:
+    """Serialize one stored training job row for API responses."""
+
     return {
         "id": int(job["id"]),
         "status": job["status"],
@@ -187,6 +219,8 @@ def _serialize_job(job: dict) -> dict:
 
 
 def _serialize_model(model: dict) -> dict:
+    """Serialize one stored model row for API responses."""
+
     return {
         "id": int(model["id"]),
         "name": model["name"],

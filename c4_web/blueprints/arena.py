@@ -11,14 +11,20 @@ arena_bp = Blueprint("arena_api", __name__, url_prefix="/api/v1/arena")
 
 
 def _repo():
+    """Return the request-scoped repository extension."""
+
     return current_app.extensions["repository"]
 
 
 def _jobs():
+    """Return the arena match job manager extension."""
+
     return current_app.extensions["match_jobs"]
 
 
 def _decode(raw):
+    """Decode one JSON-backed storage field when possible."""
+
     if raw is None:
         return None
     try:
@@ -28,6 +34,8 @@ def _decode(raw):
 
 
 def _serialize(match: dict, *, include_trace: bool = True) -> dict:
+    """Serialize one stored arena match row for API responses."""
+
     return {
         "id": int(match["id"]),
         "status": match["status"],
@@ -46,6 +54,8 @@ def _serialize(match: dict, *, include_trace: bool = True) -> dict:
 
 @arena_bp.post("/matches")
 def create_arena_match():
+    """Create one asynchronous arena match job from the posted payload."""
+
     payload = request.get_json(silent=True) or {}
     try:
         match = _jobs().submit_job(payload)
@@ -56,12 +66,16 @@ def create_arena_match():
 
 @arena_bp.get("/matches")
 def list_arena_matches():
+    """List recent arena matches without embedding their full traces."""
+
     matches = _repo().list_arena_matches(limit=100)
     return jsonify({"matches": [_serialize(match, include_trace=False) for match in matches]})
 
 
 @arena_bp.get("/matches/<int:match_id>")
 def get_arena_match(match_id: int):
+    """Return one arena match, including summary and trace fields."""
+
     match = _repo().get_arena_match(match_id)
     if match is None:
         return jsonify({"error": "Arena match not found."}), 404
@@ -70,11 +84,15 @@ def get_arena_match(match_id: int):
 
 @arena_bp.get("/matches/<int:match_id>/events")
 def stream_arena_match_events(match_id: int):
+    """Stream server-sent arena match updates until the job finishes."""
+
     if _repo().get_arena_match(match_id) is None:
         return jsonify({"error": "Arena match not found."}), 404
 
     @stream_with_context
     def event_stream():
+        """Yield incremental arena match snapshots as SSE frames."""
+
         last_payload = None
         while True:
             match = _repo().get_arena_match(match_id)

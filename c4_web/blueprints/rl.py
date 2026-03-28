@@ -12,14 +12,20 @@ MAX_RL_EPISODES = 5000
 
 
 def _repo():
+    """Return the request-scoped repository extension."""
+
     return current_app.extensions["repository"]
 
 
 def _jobs():
+    """Return the RL job manager extension."""
+
     return current_app.extensions["rl_jobs"]
 
 
 def _decode(raw):
+    """Decode one JSON-backed storage field when possible."""
+
     if raw is None:
         return None
     try:
@@ -29,6 +35,8 @@ def _decode(raw):
 
 
 def _serialize(job: dict) -> dict:
+    """Serialize one stored RL job row for API responses."""
+
     return {
         "id": int(job["id"]),
         "status": job["status"],
@@ -44,6 +52,8 @@ def _serialize(job: dict) -> dict:
 
 @rl_bp.get("/status")
 def rl_status():
+    """Report that the RL job surface is enabled."""
+
     return jsonify(
         {
             "status": "enabled",
@@ -54,6 +64,8 @@ def rl_status():
 
 @rl_bp.post("/jobs")
 def create_rl_job():
+    """Create one RL self-play training job with validated defaults."""
+
     payload = request.get_json(silent=True) or {}
     raw_episodes = payload.get("episodes", 300)
     try:
@@ -78,12 +90,16 @@ def create_rl_job():
 
 @rl_bp.get("/jobs")
 def list_rl_jobs():
+    """List recent RL training jobs."""
+
     jobs = _repo().list_rl_jobs(limit=100)
     return jsonify({"jobs": [_serialize(job) for job in jobs]})
 
 
 @rl_bp.get("/jobs/<int:job_id>")
 def get_rl_job(job_id: int):
+    """Return one RL training job by identifier."""
+
     job = _repo().get_rl_job(job_id)
     if job is None:
         return jsonify({"error": "RL job not found."}), 404
@@ -92,11 +108,15 @@ def get_rl_job(job_id: int):
 
 @rl_bp.get("/jobs/<int:job_id>/events")
 def stream_rl_job_events(job_id: int):
+    """Stream server-sent RL job updates until completion."""
+
     if _repo().get_rl_job(job_id) is None:
         return jsonify({"error": "RL job not found."}), 404
 
     @stream_with_context
     def event_stream():
+        """Yield incremental RL job snapshots as SSE frames."""
+
         last_payload = None
         while True:
             job = _repo().get_rl_job(job_id)
