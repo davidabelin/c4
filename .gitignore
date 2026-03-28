@@ -1,1 +1,5 @@
 data/c4.db
+c4_web/blueprints/__pycache__/arena.cpython-314.pyc
+c4_web/blueprints/__pycache__/main.cpython-314.pyc
+c4_web/blueprints/__pycache__/rl.cpython-314.pyc
+c4_web/blueprints/__pycache__/training.cpython-314.pyc
