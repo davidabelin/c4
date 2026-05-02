@@ -6,15 +6,17 @@
     <h1>Supervised Training</h1>
     <p>Train a model from curated Connect4 sessions, register the artifact, and activate it for play or arena matches.</p>
     <form id="trainForm" class="train-form">
-      <label>
-        <span class="label-line">Model <span class="help-dot" title="Decision Tree is the fast baseline, NN is the richer neural baseline, and Frequency is a lightweight context model.">i</span></span>
-        <select name="model_type">
-          <option value="decision_tree">Decision Tree</option>
-          <option value="mlp">Neural Network</option>
-          <option value="frequency">Frequency Baseline</option>
-        </select>
-      </label>
-      <p id="modelDescription" class="form-note">Decision Tree: quick baseline for tabular board and action-history patterns.</p>
+      <div class="train-field train-field-model">
+        <label>
+          <span class="label-line">Model <span class="help-dot" title="Decision Tree is the fast baseline, NN is the richer neural baseline, and Frequency is a lightweight context model.">i</span></span>
+          <select name="model_type">
+            <option value="decision_tree">Decision Tree</option>
+            <option value="mlp">Neural Network</option>
+            <option value="frequency">Frequency Baseline</option>
+          </select>
+        </label>
+        <p id="modelDescription" class="form-note">Decision Tree: quick baseline for tabular board and action-history patterns.</p>
+      </div>
       <label>
         <span class="label-line">History Context <span class="help-dot" title="How many prior moves are encoded into each training sample. Connect4 lookahead is configured on the Play page forecasts, not here.">i</span></span>
         <input name="lookback" type="number" min="1" max="20" value="5">
