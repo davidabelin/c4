@@ -1,5 +1,5 @@
 ## c4
-Connect4 lab scaffold for AIX, intentionally shaped to mirror the `rps` project layout.
+Standalone Connect4 lab scaffold, intentionally shaped to mirror the `rps` project layout.
 
 ### Scope of this initial migration pass
 - Establish a `rps`-like package/file organization under the sibling `c4` repo.

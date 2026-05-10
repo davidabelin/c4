@@ -1,4 +1,4 @@
-"""Local entrypoint for the c4 Flask app scaffold."""
+"""Local entrypoint for the standalone c4 Flask app."""
 
 import os
 from c4_web import create_app
@@ -31,4 +31,8 @@ if base_path:
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5001, debug=True)
+    app.run(
+        host=str(os.getenv("HOST", "127.0.0.1")).strip() or "127.0.0.1",
+        port=int(os.getenv("PORT", "5104")),
+        debug=str(os.getenv("FLASK_DEBUG", "1")).strip().lower() in {"1", "true", "yes", "on"},
+    )

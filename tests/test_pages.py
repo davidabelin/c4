@@ -16,21 +16,24 @@ def client(tmp_path: Path):
             "EVENTS_DIR": str(tmp_path / "events"),
             "MODELS_DIR": str(tmp_path / "models"),
             "EXPORTS_DIR": str(tmp_path / "exports"),
-            "AIX_HUB_URL": "https://aix-labs.uw.r.appspot.com/",
         }
     )
     return app.test_client()
 
 
 @pytest.mark.parametrize("path", ["/", "/play", "/arena", "/training", "/rl"])
-def test_pages_include_aix_footer(client, path: str):
+def test_pages_are_standalone(client, path: str):
     response = client.get(path)
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "copyleft.svg" in html
     assert 'width="16"' in html
     assert 'height="16"' in html
-    assert "2026 AIX Protodyne" in html
-    assert "Contact Us" in html
-    assert "Privacy" in html
-    assert "AIX TOC" in html
+    assert "2026 Connect4 Lab" in html
+    forbidden_fragments = (
+        "Back to " + "AI" + "X Hub",
+        "__" + "AI" + "X_HUB_URL__",
+        "AI" + "X " + "Proto" + "dyne",
+    )
+    for fragment in forbidden_fragments:
+        assert fragment not in html

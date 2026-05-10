@@ -5,19 +5,12 @@ Role
 Assemble the standalone Connect4 lab by wiring persistence, gameplay runtime
 cache, supervised training jobs, RL jobs, arena jobs, and the page/API
 blueprints into one Flask application.
-
-Cross-Repo Context
-------------------
-``c4`` intentionally mirrors the high-level structure of ``rps`` so the two
-labs can share operational conventions under AIX while remaining independent
-repos.
 """
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from urllib.parse import urljoin
 
 from flask import Flask
 
@@ -41,8 +34,8 @@ def _read_secret_version(secret_version_name: str) -> str:
 def _resolve_secret_into_config(app: Flask, *, target_key: str, source_key: str) -> None:
     """Populate a config value from Secret Manager when direct value is empty.
 
-    This keeps standalone deployment and AIX mounting on the same configuration
-    contract.
+    This lets local and cloud deployments use either direct env values or
+    Secret Manager indirection.
     """
 
     if str(app.config.get(target_key, "")).strip():
@@ -58,29 +51,8 @@ def _resolve_secret_into_config(app: Flask, *, target_key: str, source_key: str)
         ) from exc
 
 
-def _normalize_base_url(value: str) -> str:
-    raw = str(value or "").strip()
-    return raw or "/"
-
-
-def _aix_page_url(base_url: str, path: str) -> str:
-    """Build one AIX-owned page URL from the configured hub base URL."""
-
-    base = _normalize_base_url(base_url)
-    if base == "/":
-        return path
-    return urljoin(base.rstrip("/") + "/", path.lstrip("/"))
-
-
 def create_app(config: dict | None = None) -> Flask:
-    """Create and configure the Flask application instance.
-
-    Cross-Repo Context
-    ------------------
-    AIX mounts this same factory locally under ``/c4``. In production, the same
-    app is deployed as the standalone Connect4 service and routed back under the
-    umbrella path layout.
-    """
+    """Create and configure the standalone Flask application instance."""
 
     root = Path(__file__).resolve().parents[1]
     data_dir = root / "data"
@@ -109,7 +81,6 @@ def create_app(config: dict | None = None) -> Flask:
         INTERNAL_WORKER_TOKEN=os.getenv("C4_INTERNAL_WORKER_TOKEN", ""),
         INTERNAL_WORKER_TOKEN_SECRET=os.getenv("C4_INTERNAL_WORKER_TOKEN_SECRET", ""),
         AGENT_MATCH_DEFAULT_TURNS=int(os.getenv("C4_AGENT_MATCH_DEFAULT_TURNS", "42")),
-        AIX_HUB_URL=os.getenv("AIX_HUB_URL", "/"),
     )
     if config:
         app.config.update(config)
@@ -157,17 +128,5 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(arena_bp)
     app.register_blueprint(training_bp)
     app.register_blueprint(rl_bp)
-
-    @app.context_processor
-    def inject_template_globals() -> dict:
-        """Expose AIX navigation URLs to the standalone Connect4 templates."""
-
-        hub_url = _normalize_base_url(app.config.get("AIX_HUB_URL", "/"))
-        return {
-            "aix_hub_url": hub_url,
-            "aix_contact_url": _aix_page_url(hub_url, "/contact"),
-            "aix_privacy_url": _aix_page_url(hub_url, "/privacy"),
-            "aix_toc_url": _aix_page_url(hub_url, "/toc"),
-        }
 
     return app
