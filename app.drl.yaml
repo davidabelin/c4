@@ -1,0 +1,13 @@
+runtime: python314
+service: c4
+entrypoint: gunicorn --worker-tmp-dir /tmp -b :$PORT run:app
+
+env_variables:
+  C4_DB_PATH: /tmp/c4.db
+  C4_EVENTS_DIR: /tmp/c4/events
+  C4_MODELS_DIR: /tmp/c4/models
+  C4_EXPORTS_DIR: /tmp/c4/exports
+  C4_TRAINING_EXECUTION_MODE: local
+  C4_AGENT_MATCH_DEFAULT_TURNS: "42"
+
+service_account: administrator@deeprl-031026.iam.gserviceaccount.com
