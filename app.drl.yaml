@@ -9,5 +9,6 @@ env_variables:
   C4_EXPORTS_DIR: /tmp/c4/exports
   C4_TRAINING_EXECUTION_MODE: local
   C4_AGENT_MATCH_DEFAULT_TURNS: "42"
+  DRL_HOME_URL: https://deeprl-031026.wm.r.appspot.com/
 
 service_account: administrator@deeprl-031026.iam.gserviceaccount.com

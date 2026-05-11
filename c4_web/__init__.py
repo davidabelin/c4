@@ -81,6 +81,7 @@ def create_app(config: dict | None = None) -> Flask:
         INTERNAL_WORKER_TOKEN=os.getenv("C4_INTERNAL_WORKER_TOKEN", ""),
         INTERNAL_WORKER_TOKEN_SECRET=os.getenv("C4_INTERNAL_WORKER_TOKEN_SECRET", ""),
         AGENT_MATCH_DEFAULT_TURNS=int(os.getenv("C4_AGENT_MATCH_DEFAULT_TURNS", "42")),
+        DRL_HOME_URL=os.getenv("DRL_HOME_URL", "http://127.0.0.1:5000/"),
     )
     if config:
         app.config.update(config)
@@ -116,6 +117,12 @@ def create_app(config: dict | None = None) -> Flask:
     app.extensions["game_runtime"] = GameRuntimeCache(max_entries=256)
     app.extensions["rl_jobs"] = RLJobManager(repository, models_dir=app.config["MODELS_DIR"])
     app.extensions["match_jobs"] = MatchJobManager(repository, default_agent=app.config["DEFAULT_AGENT"])
+
+    @app.context_processor
+    def inject_shared_links() -> dict[str, str]:
+        """Expose parent-lab navigation without coupling this app to DRL routes."""
+
+        return {"drl_home_url": str(app.config.get("DRL_HOME_URL", "")).strip()}
 
     from c4_web.blueprints.arena import arena_bp
     from c4_web.blueprints.game import game_bp

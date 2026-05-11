@@ -22,6 +22,9 @@
         <a href="{{ url_for('main.arena_page') }}">Arena</a>
         <a href="{{ url_for('main.training_page') }}">Training</a>
         <a href="{{ url_for('main.rl_page') }}">RL</a>
+        {% if drl_home_url %}
+        <a class="nav-return" href="{{ drl_home_url }}">DRL Labs</a>
+        {% endif %}
       </nav>
     </header>
     <main class="page">{% block content %}{% endblock %}</main>
@@ -33,6 +36,9 @@
         </p>
         <nav class="footer-links" aria-label="Connect4 footer">
           <a href="{{ url_for('main.home') }}">Connect4 Lab</a>
+          {% if drl_home_url %}
+          <a href="{{ drl_home_url }}">DRL Labs</a>
+          {% endif %}
         </nav>
       </div>
     </footer>
