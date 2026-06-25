@@ -83,7 +83,7 @@ def create_app(config: dict | None = None) -> Flask:
         INTERNAL_WORKER_TOKEN=os.getenv("C4_INTERNAL_WORKER_TOKEN", ""),
         INTERNAL_WORKER_TOKEN_SECRET=os.getenv("C4_INTERNAL_WORKER_TOKEN_SECRET", ""),
         AGENT_MATCH_DEFAULT_TURNS=int(os.getenv("C4_AGENT_MATCH_DEFAULT_TURNS", "42")),
-        DRL_HOME_URL=os.getenv("DRL_HOME_URL", "http://127.0.0.1:5000/"),
+        DRL_HOME_URL=os.getenv("DRL_HOME_URL", "https://aix-labs.uw.r.appspot.com/"),
     )
     if config:
         app.config.update(config)
