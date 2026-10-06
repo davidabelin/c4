@@ -1,6 +1,9 @@
-c4_web/blueprints/__pycache__/arena.cpython-314.pyc
-c4_web/blueprints/__pycache__/main.cpython-314.pyc
-c4_web/blueprints/__pycache__/rl.cpython-314.pyc
-c4_web/blueprints/__pycache__/training.cpython-314.pyc
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+# Ignore all local/generated datasets.
 data/
-data/c4.db
