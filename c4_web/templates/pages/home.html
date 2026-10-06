@@ -1,35 +1,86 @@
 {% extends "base.html" %}
 {% block title %}Connect4 | Home{% endblock %}
 {% block content %}
-<section class="hero">
-  <p class="eyebrow">Flask + Agent Lab + Training Pipelines</p>
-  <h1>Build, benchmark, and deploy Connect4 AI agents.</h1>
+<section class="hero hero-hub">
+  <p class="eyebrow">An AIX Labs playground</p>
+  <h1 class="wordmark">
+    <span class="wordmark-mark">Connect4</span>
+    <span class="wordmark-sub">Lab</span>
+  </h1>
   <p class="lede">
-    This lab follows a standalone structure while using Connect4-specific
-    gameplay/training/RL APIs.
+    Drop discs against agents that forecast your next move. Then pit agents against each other,
+    curate the recorded games into training data, and train and activate your own models.
+    No sign-up needed.
   </p>
   <div class="hero-actions">
-    <a class="btn btn-primary" href="{{ url_for('main.play_page') }}">Open Play</a>
-    <a class="btn btn-secondary" href="{{ url_for('main.arena_page') }}">Open Arena</a>
-    <a class="btn btn-secondary" href="{{ url_for('main.rl_page') }}">Open RL</a>
+    <a class="btn btn-primary btn-lg" href="{{ url_for('main.play_page') }}">Start playing <span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+    <a class="btn btn-ghost btn-lg" href="{{ url_for('main.arena_page') }}">Open the arena</a>
+    <a class="btn btn-ghost btn-lg" href="{{ url_for('main.training_page') }}">Train a model</a>
   </div>
+  <ul class="hero-stats" aria-label="At a glance">
+    <li><strong>7</strong> columns</li>
+    <li><strong>3</strong> difficulty levels</li>
+    <li><strong>0</strong> sign-ups required</li>
+  </ul>
 </section>
 
-<section class="grid">
+<section class="grid" aria-label="What you can do">
   <article class="card">
-    <h2>Play Scaffold</h2>
-    <p>API-backed shell for game creation and move execution.</p>
-    <a class="btn btn-primary" href="{{ url_for('main.play_page') }}">Open Play</a>
+    <span class="card-badge" aria-hidden="true">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3.5" y="5.5" width="25" height="21" rx="3"/>
+        <circle cx="10" cy="12" r="2.3"/>
+        <circle cx="16" cy="12" r="2.3"/>
+        <circle cx="22" cy="12" r="2.3" fill="currentColor"/>
+        <circle cx="10" cy="20" r="2.3" fill="currentColor"/>
+        <circle cx="16" cy="20" r="2.3" fill="currentColor"/>
+        <circle cx="22" cy="20" r="2.3"/>
+      </svg>
+    </span>
+    <p class="card-kind">Play</p>
+    <h2>Human vs Agent</h2>
+    <p>Three difficulty levels, column win forecasts, undo, and a move clock.</p>
+    <a class="card-link" href="{{ url_for('main.play_page') }}">Open Play <span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
   </article>
   <article class="card">
+    <span class="card-badge" aria-hidden="true">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="16" r="5"/>
+        <circle cx="23" cy="16" r="5"/>
+        <path d="M14 16h4M9 11V5M23 21v6"/>
+      </svg>
+    </span>
+    <p class="card-kind">Watch</p>
     <h2>Agent Arena</h2>
     <p>Run head-to-head matches, stream board updates live, and replay stored traces.</p>
-    <a class="btn btn-secondary" href="{{ url_for('main.arena_page') }}">Open Arena</a>
+    <a class="card-link" href="{{ url_for('main.arena_page') }}">Open Arena <span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
   </article>
   <article class="card">
-    <h2>Training Scaffold</h2>
-    <p>Model jobs and registry hooks are available under the training API.</p>
-    <a class="btn btn-secondary" href="{{ url_for('main.training_page') }}">Open Training</a>
+    <span class="card-badge" aria-hidden="true">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 26h24M7 22V14M13 22V8M19 22v-4M25 22V11"/>
+      </svg>
+    </span>
+    <p class="card-kind">Train</p>
+    <h2>Supervised Models</h2>
+    <p>Curate recorded sessions, train decision trees or neural nets, and activate them for play.</p>
+    <a class="card-link" href="{{ url_for('main.training_page') }}">Open Training <span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+  </article>
+  <article class="card">
+    <span class="card-badge" aria-hidden="true">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="7" cy="9" r="2.5"/>
+        <circle cx="7" cy="23" r="2.5"/>
+        <circle cx="16" cy="16" r="2.5"/>
+        <circle cx="25" cy="9" r="2.5"/>
+        <circle cx="25" cy="23" r="2.5"/>
+        <path d="M9 10.5 14 14.5M9 21.5 14 17.5M18 14.5 23 10.5M18 17.5 23 21.5"/>
+      </svg>
+    </span>
+    <p class="card-kind">Learn</p>
+    <h2>Reinforcement Learning</h2>
+    <p>Train a tabular Q-learning policy against heuristic opponents and store it as a model.</p>
+    <a class="card-link" href="{{ url_for('main.rl_page') }}">Open RL Lab <span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
   </article>
 </section>
 {% endblock %}
