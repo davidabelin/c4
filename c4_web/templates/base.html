@@ -31,7 +31,7 @@
         <a href="{{ url_for('main.training_page') }}"{% if request.path == "/training" %} aria-current="page"{% endif %}>Training</a>
         <a href="{{ url_for('main.rl_page') }}"{% if request.path == "/rl" %} aria-current="page"{% endif %}>RL</a>
         {% if drl_home_url %}
-        <a class="nav-return" href="{{ drl_home_url }}">AIX Hub</a>
+        <a class="nav-return" href="{{ drl_home_url }}">DRL Labs</a>
         {% endif %}
       </nav>
     </header>
@@ -45,7 +45,7 @@
         <nav class="footer-links" aria-label="Connect4 footer">
           <a href="{{ url_for('main.home') }}"{% if request.path == "/" %} aria-current="page"{% endif %}>Connect4 Lab</a>
           {% if drl_home_url %}
-          <a href="{{ drl_home_url }}">AIX Hub</a>
+          <a href="{{ drl_home_url }}">DRL Labs</a>
           {% endif %}
         </nav>
       </div>
